@@ -109,23 +109,17 @@ export class SarvamService {
         language: sarvamLanguage
       });
 
-      // Sarvam API requires multipart/form-data with file field
-      const FormData = require('form-data');
-      const formData = new FormData();
-      formData.append('file', audioBuffer, {
-        filename: 'audio.wav',
-        contentType: 'audio/wav'
-      });
-      formData.append('language', sarvamLanguage);
-      formData.append('model', 'saarika:v2');
-
       const response = await axios.post(
         `${this.baseURL}/speech-to-text`,
-        formData,
+        {
+          audio: audioBuffer.toString('base64'),
+          language: sarvamLanguage,
+          model: 'saarika:v2'
+        },
         {
           headers: {
             'API-Subscription-Key': this.apiKey!,
-            ...formData.getHeaders()  // This sets Content-Type with boundary
+            'Content-Type': 'application/json'
           },
           timeout: 30000  // 30 second timeout
         }

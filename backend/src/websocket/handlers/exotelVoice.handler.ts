@@ -254,60 +254,18 @@ class ExotelVoiceHandler {
                 const currentSession = this.sessions.get(client.id);
                 if (!currentSession) return;
 
-                // Handle language detection from Sarvam response
-                if (result.language && currentSession.config.enableAutoLanguageDetection) {
-                  const detectedLanguage = result.language;
-                  const previousLanguage = currentSession.detectedLanguage;
-                  const languageChanged = previousLanguage && previousLanguage !== detectedLanguage;
-
-                  currentSession.detectedLanguage = detectedLanguage;
-
-                  if (languageChanged) {
-                    logger.info('🔄 LANGUAGE SWITCH DETECTED (Sarvam)', {
-                      clientId: client.id,
-                      previousLanguage,
-                      newLanguage: detectedLanguage
-                    });
-
-                    // Update language in voice pipeline service
-                    if (voicePipelineService) {
-                      await voicePipelineService.updateDetectedLanguage(
-                        currentSession.callLogId,
-                        detectedLanguage,
-                        0.9  // Sarvam doesn't provide confidence, use default
-                      );
-                    }
-                  } else if (!previousLanguage) {
-                    // First language detection
-                    logger.info('🌍 LANGUAGE DETECTED (Sarvam)', {
-                      clientId: client.id,
-                      detectedLanguage
-                    });
-
-                    if (voicePipelineService) {
-                      await voicePipelineService.updateDetectedLanguage(
-                        currentSession.callLogId,
-                        detectedLanguage,
-                        0.9
-                      );
-                    }
-                  }
-                }
-
                 if (result.isFinal && result.text.trim().length > 0) {
                   currentSession.userTranscript = (currentSession.userTranscript || '') + ' ' + result.text;
                   logger.info('📝 FINAL TRANSCRIPT CAPTURED', {
                     clientId: client.id,
                     text: result.text,
-                    accumulated: currentSession.userTranscript,
-                    detectedLanguage: result.language
+                    accumulated: currentSession.userTranscript
                   });
                 } else if (result.text.trim().length > 0) {
                   currentSession.partialTranscript = result.text;
                   logger.info('📝 PARTIAL TRANSCRIPT', {
                     clientId: client.id,
-                    text: result.text,
-                    detectedLanguage: result.language
+                    text: result.text
                   });
 
                   // Start LLM as soon as we have 3+ words (parallel processing)
@@ -639,14 +597,6 @@ class ExotelVoiceHandler {
     // Send audio to STT streaming connection for real-time transcription
     if (session.deepgramConnection) {
       try {
-        // Check if WebSocket is ready before sending
-        const ws = session.deepgramConnection as any;
-        if (ws.readyState !== 1) {  // 1 = OPEN
-          // WebSocket not ready, buffer the audio
-          session.audioBuffer.push(audioChunk);
-          return;
-        }
-
         // Check if this is a Sarvam connection (indicated by STT provider)
         if (session.sttProvider === 'sarvam') {
           // Sarvam expects AudioContent object with data, encoding, and sample_rate
@@ -1736,8 +1686,7 @@ class ExotelVoiceHandler {
 
       // Check if WebSocket is still connected
       if (client.readyState !== 1) { // 1 = OPEN
-        // This is expected when calls end - not an error
-        logger.warn('WebSocket closed, skipping audio transmission (call may have ended)', {
+        logger.error('WebSocket not open when trying to send audio', {
           clientId: client.id,
           readyState: client.readyState,
           states: { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 }

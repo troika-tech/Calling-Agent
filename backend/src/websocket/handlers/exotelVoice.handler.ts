@@ -506,12 +506,13 @@ class ExotelVoiceHandler {
       // Parse Exotel message
       const message: ExotelWebSocketMessage = JSON.parse(data.toString());
 
-      // Debug: Log all incoming Exotel events
-      logger.debug('Exotel WebSocket event received', {
+      // Log all incoming Exotel events (info level for debugging)
+      logger.info('Exotel WebSocket event received', {
         event: message.event,
         hasMedia: !!message.media,
         mediaSize: message.media?.payload?.length || 0,
-        streamSid: message.stream_sid || message.streamSid
+        streamSid: message.stream_sid || message.streamSid,
+        clientId: client.id
       });
 
       switch (message.event) {
@@ -572,8 +573,16 @@ class ExotelVoiceHandler {
     session: VoiceSession,
     message: ExotelWebSocketMessage
   ): Promise<void> {
+    logger.info('📥 handleMedia called', {
+      clientId: client.id,
+      hasMedia: !!message.media,
+      mediaPayloadLength: message.media?.payload?.length || 0,
+      track: message.media?.track,
+      streamSid: message.stream_sid || message.streamSid
+    });
+
     if (!message.media) {
-      
+      logger.warn('No media in message', { clientId: client.id });
       return;
     }
 
@@ -633,11 +642,12 @@ class ExotelVoiceHandler {
             // Log first few chunks to verify audio is being sent
             if (!session.audioChunkCounter) session.audioChunkCounter = 0;
             session.audioChunkCounter++;
-            if (session.audioChunkCounter <= 5 || session.audioChunkCounter % 100 === 0) {
-              logger.debug('Audio sent to Deepgram', {
+            if (session.audioChunkCounter <= 10 || session.audioChunkCounter % 50 === 0) {
+              logger.info('Audio sent to Deepgram', {
                 chunkNumber: session.audioChunkCounter,
                 audioSize: audioChunk.length,
-                connectionState: session.deepgramConnection?.readyState || 'unknown'
+                connectionState: session.deepgramConnection?.readyState || 'unknown',
+                clientId: client.id
               });
             }
           } catch (sendError: any) {

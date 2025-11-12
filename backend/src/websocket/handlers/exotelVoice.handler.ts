@@ -1736,7 +1736,8 @@ class ExotelVoiceHandler {
 
       // Check if WebSocket is still connected
       if (client.readyState !== 1) { // 1 = OPEN
-        logger.error('WebSocket not open when trying to send audio', {
+        // This is expected when calls end - not an error
+        logger.warn('WebSocket closed, skipping audio transmission (call may have ended)', {
           clientId: client.id,
           readyState: client.readyState,
           states: { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 }

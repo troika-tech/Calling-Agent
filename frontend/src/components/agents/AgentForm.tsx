@@ -200,7 +200,9 @@ export default function AgentForm() {
       setValue('temperature', agent.config.llm.temperature);
       setValue('maxTokens', agent.config.llm.maxTokens || 300);
       setValue('language', agent.config.language);
-      setValue('enableAutoLanguageDetection', agent.config.enableAutoLanguageDetection ?? false);
+      const loadedAutoDetection = agent.config.enableAutoLanguageDetection ?? false;
+      console.log('Loading agent - enableAutoLanguageDetection:', loadedAutoDetection, 'from config:', agent.config.enableAutoLanguageDetection);
+      setValue('enableAutoLanguageDetection', loadedAutoDetection);
       setValue('sttProvider', agent.config.sttProvider || 'auto');
       setValue('endCallPhrases', agent.config.endCallPhrases?.join(', ') || 'goodbye, bye, end call');
     } catch (error) {
@@ -297,6 +299,10 @@ export default function AgentForm() {
     try {
       setLoading(true);
 
+      const enableAutoDetection = data.enableAutoLanguageDetection ?? false;
+      
+      console.log('Saving agent with enableAutoLanguageDetection:', enableAutoDetection);
+      
       const config: AgentConfig = {
         prompt: data.persona, // For backward compatibility
         persona: data.persona,
@@ -311,7 +317,7 @@ export default function AgentForm() {
           maxTokens: data.maxTokens || undefined,
         },
         language: data.language,
-        enableAutoLanguageDetection: data.enableAutoLanguageDetection ?? false,
+        enableAutoLanguageDetection: enableAutoDetection,
         sttProvider: data.sttProvider as any,
         endCallPhrases: data.endCallPhrases
           .split(',')
@@ -320,20 +326,24 @@ export default function AgentForm() {
       };
 
       if (id) {
-        await agentService.updateAgent(id, {
+        const updatedAgent = await agentService.updateAgent(id, {
           name: data.name,
           description: data.description,
           config,
         });
+        
+        // Reload the agent data to reflect saved changes
+        await loadAgent(id);
+        
+        alert('Agent updated successfully!');
       } else {
         await agentService.createAgent({
           name: data.name,
           description: data.description,
           config,
         });
+        navigate('/agents');
       }
-
-      navigate('/agents');
     } catch (error: any) {
       console.error('Error saving agent:', error);
       alert(error.response?.data?.message || 'Failed to save agent');

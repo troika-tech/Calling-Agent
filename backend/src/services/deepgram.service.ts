@@ -147,19 +147,19 @@ export class DeepgramService {
       // Build live connection options
       let liveOptions: any;
       if (useLanguageDetection) {
-        // Try using 'multi' language parameter instead of detect_language
-        // This is more compatible and doesn't require special API permissions
+        // Don't specify language - let Deepgram auto-detect
+        // 'multi' might not be a valid language code for live API
         liveOptions = {
           model: 'nova-2',
-          language: 'multi',  // Use 'multi' instead of detect_language for better compatibility
+          // No language parameter - Deepgram will auto-detect
           interim_results: true,
           channels: 1,
           sample_rate: 8000,  // Match Exotel's 8kHz
           encoding: 'linear16'
           // Note: smart_format, punctuate, endpointing, and vad_events are excluded
-          // to avoid conflicts with multilingual mode
+          // to avoid conflicts with auto-detection
         };
-        logger.info('🌐 Deepgram multilingual mode enabled (language: multi) - using nova-2 model');
+        logger.info('🌐 Deepgram auto-detection mode - no language specified, using nova-2 model');
       } else {
         // Use full feature set when language is specified
         liveOptions = {
@@ -209,13 +209,21 @@ export class DeepgramService {
       });
 
       connection.on(LiveTranscriptionEvents.Transcript, (data: any) => {
+        logger.info('📝 Deepgram transcript event received', {
+          hasChannel: !!data.channel,
+          hasAlternatives: !!data.channel?.alternatives,
+          alternativesCount: data.channel?.alternatives?.length || 0,
+          isFinal: data.is_final,
+          rawData: JSON.stringify(data).substring(0, 300)
+        });
+
         const transcript = data.channel?.alternatives?.[0]?.transcript;
         const isFinal = data.is_final;
         const confidence = data.channel?.alternatives?.[0]?.confidence || 0;
         const detectedLanguage = data.channel?.detected_language;
 
         if (transcript && transcript.trim().length > 0) {
-          logger.debug('Deepgram transcript', {
+          logger.info('✅ Deepgram transcript text', {
             text: transcript,
             isFinal,
             confidence,
@@ -227,6 +235,13 @@ export class DeepgramService {
             confidence,
             isFinal,
             detectedLanguage
+          });
+        } else {
+          logger.warn('⚠️ Deepgram transcript event but no text', {
+            transcript: transcript,
+            isFinal,
+            hasAlternatives: !!data.channel?.alternatives,
+            alternativesLength: data.channel?.alternatives?.length || 0
           });
         }
       });

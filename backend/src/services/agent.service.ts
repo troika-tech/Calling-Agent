@@ -11,18 +11,23 @@ export interface CreateAgentData {
   name: string;
   config: {
     prompt: string;
+    persona?: string;
+    greetingMessage?: string;
     voice: {
-      provider: 'openai' | 'elevenlabs' | 'cartesia';
+      provider: 'openai' | 'elevenlabs' | 'cartesia' | 'deepgram' | 'sarvam';
       voiceId: string;
       model?: string;
       settings?: Record<string, any>;
     };
     language: string;
+    enableAutoLanguageDetection?: boolean;
+    sttProvider?: 'deepgram' | 'sarvam' | 'whisper';
     llm: {
-      model: 'gpt-4' | 'gpt-3.5-turbo' | 'gpt-4-turbo';
+      model: 'gpt-4' | 'gpt-3.5-turbo' | 'gpt-4-turbo' | 'gpt-4o' | 'gpt-4o-mini' | 'claude-3-5-haiku-20241022' | 'claude-3-5-sonnet-20241022';
       temperature?: number;
       maxTokens?: number;
     };
+    endCallPhrases?: string[];
     firstMessage?: string;
     sessionTimeout?: number;
     flow?: {

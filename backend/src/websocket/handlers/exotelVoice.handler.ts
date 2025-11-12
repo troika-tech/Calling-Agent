@@ -627,7 +627,27 @@ class ExotelVoiceHandler {
           }
         } else {
           // Deepgram accepts raw audio bytes
-          session.deepgramConnection.send(audioChunk);
+          try {
+            session.deepgramConnection.send(audioChunk);
+            
+            // Log first few chunks to verify audio is being sent
+            if (!session.audioChunkCounter) session.audioChunkCounter = 0;
+            session.audioChunkCounter++;
+            if (session.audioChunkCounter <= 5 || session.audioChunkCounter % 100 === 0) {
+              logger.debug('Audio sent to Deepgram', {
+                chunkNumber: session.audioChunkCounter,
+                audioSize: audioChunk.length,
+                connectionState: session.deepgramConnection?.readyState || 'unknown'
+              });
+            }
+          } catch (sendError: any) {
+            logger.error('Failed to send audio chunk to Deepgram', {
+              error: sendError.message,
+              audioSize: audioChunk.length,
+              connectionState: session.deepgramConnection?.readyState
+            });
+            throw sendError; // Re-throw to trigger fallback
+          }
         }
       } catch (error: any) {
         logger.error('Failed to send audio to STT stream', {

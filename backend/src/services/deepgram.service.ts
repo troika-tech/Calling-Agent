@@ -169,10 +169,19 @@ export class DeepgramService {
         liveOptions.vad_events = options?.vadEvents ?? true;
       }
 
-      logger.debug('Deepgram connection options', {
-        ...liveOptions,
-        // Don't log API key if present
-        api_key: liveOptions.api_key ? '[REDACTED]' : undefined
+      // Log the actual options being sent (for debugging)
+      logger.info('Deepgram connection options being sent', {
+        model: liveOptions.model,
+        detect_language: liveOptions.detect_language,
+        language: liveOptions.language,
+        endpointing: liveOptions.endpointing,
+        vad_events: liveOptions.vad_events,
+        smart_format: liveOptions.smart_format,
+        punctuate: liveOptions.punctuate,
+        interim_results: liveOptions.interim_results,
+        channels: liveOptions.channels,
+        sample_rate: liveOptions.sample_rate,
+        encoding: liveOptions.encoding
       });
 
       const connection = this.client.listen.live(liveOptions);

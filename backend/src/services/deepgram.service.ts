@@ -147,19 +147,18 @@ export class DeepgramService {
       // Build live connection options
       let liveOptions: any;
       if (useLanguageDetection) {
-        // When using language detection, use minimal parameters to avoid conflicts
-        // Some Deepgram features are incompatible with detect_language
+        // When using language detection, use absolute minimal parameters
+        // Many Deepgram features conflict with detect_language
         liveOptions = {
-          model: 'nova-3',
+          model: 'nova-2',  // Use nova-2 as it has better detect_language support
           detect_language: true,
-          interim_results: true,  // Get partial results for faster UX
           channels: 1,
           sample_rate: 8000,  // Match Exotel's 8kHz
           encoding: 'linear16'
-          // Note: smart_format, punctuate, endpointing, and vad_events are NOT set
-          // when using detect_language to avoid API conflicts
+          // Note: interim_results, smart_format, punctuate, endpointing, and vad_events
+          // are NOT set when using detect_language to avoid API conflicts
         };
-        logger.info('🌐 Deepgram multilingual mode enabled (detect_language: true) - using minimal parameters');
+        logger.info('🌐 Deepgram multilingual mode enabled (detect_language: true) - using minimal parameters with nova-2 model');
       } else {
         // Use full feature set when language is specified
         liveOptions = {
@@ -191,7 +190,17 @@ export class DeepgramService {
         encoding: liveOptions.encoding
       });
 
-      const connection = this.client.listen.live(liveOptions);
+      let connection: LiveClient;
+      try {
+        connection = this.client.listen.live(liveOptions);
+      } catch (error: any) {
+        logger.error('Failed to create Deepgram live connection object', {
+          error: error.message,
+          errorStack: error.stack,
+          options: liveOptions
+        });
+        throw new ExternalServiceError(`Failed to create Deepgram connection: ${error.message}`);
+      }
 
       // Set up event listeners
       connection.on(LiveTranscriptionEvents.Open, () => {

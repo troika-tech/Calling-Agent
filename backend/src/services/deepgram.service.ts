@@ -150,9 +150,6 @@ export class DeepgramService {
         smart_format: true,
         punctuate: true,
         interim_results: true,  // Get partial results for faster UX
-        endpointing: options?.endpointing ?? 200,  // 200ms silence = end of speech
-        // Disable VAD events when using language detection (they conflict with detect_language)
-        vad_events: useLanguageDetection ? false : (options?.vadEvents ?? true),
         channels: 1,
         sample_rate: 8000,  // Match Exotel's 8kHz
         encoding: 'linear16'
@@ -161,11 +158,22 @@ export class DeepgramService {
       if (useLanguageDetection) {
         // Enable automatic language detection for multilingual mode
         liveOptions.detect_language = true;
+        // When using detect_language, endpointing must be disabled or set to a compatible value
+        // VAD events are also not supported with detect_language
         logger.info('🌐 Deepgram multilingual mode enabled (detect_language: true)');
       } else {
         // Use specific language
         liveOptions.language = options.language;
+        // Only set endpointing and vad_events when NOT using language detection
+        liveOptions.endpointing = options?.endpointing ?? 200;  // 200ms silence = end of speech
+        liveOptions.vad_events = options?.vadEvents ?? true;
       }
+
+      logger.debug('Deepgram connection options', {
+        ...liveOptions,
+        // Don't log API key if present
+        api_key: liveOptions.api_key ? '[REDACTED]' : undefined
+      });
 
       const connection = this.client.listen.live(liveOptions);
 
@@ -210,7 +218,11 @@ export class DeepgramService {
 
       connection.on(LiveTranscriptionEvents.Error, (error: any) => {
         logger.error('Deepgram live connection error', {
-          error: error.message || error
+          error: error.message || error,
+          errorType: error.type || 'unknown',
+          errorCode: error.code || 'unknown',
+          errorDetails: error.details || error,
+          fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)).substring(0, 500)
         });
       });
 

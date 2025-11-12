@@ -48,8 +48,25 @@ export class STTProviderService {
     if (preferredProvider === 'deepgram' && deepgramService.isAvailable()) {
       // Determine language mode for Deepgram
       let deepgramLanguage = language;
-      if (enableAutoLanguageDetection || isMultilingualIntl || isMultilingualIndian) {
-        deepgramLanguage = 'multi';  // Use Deepgram's multilingual mode
+      
+      // Only use 'multi' when auto-detection is EXPLICITLY enabled
+      // If auto-detection is disabled, map multilingual options to a default language
+      if (enableAutoLanguageDetection) {
+        // Auto-detection enabled: use 'multi' for multilingual modes, or let Deepgram auto-detect
+        if (isMultilingualIntl || isMultilingualIndian) {
+          deepgramLanguage = 'multi';
+        } else {
+          // For specific languages with auto-detection, still use 'multi' to allow detection
+          deepgramLanguage = 'multi';
+        }
+      } else {
+        // Auto-detection disabled: map multilingual options to default language
+        if (isMultilingualIntl) {
+          deepgramLanguage = 'en';  // Default to English for international multilingual
+        } else if (isMultilingualIndian) {
+          deepgramLanguage = 'hi';  // Default to Hindi for Indian multilingual
+        }
+        // For specific languages, use the language as-is
       }
 
       return {
@@ -99,10 +116,27 @@ export class STTProviderService {
     });
 
     if (deepgramService.isAvailable()) {
+      // Determine language for fallback
+      let fallbackLanguage = language;
+      if (enableAutoLanguageDetection) {
+        if (isMultilingualIntl || isMultilingualIndian) {
+          fallbackLanguage = 'multi';
+        } else {
+          fallbackLanguage = 'multi';  // Auto-detect when enabled
+        }
+      } else {
+        // Map multilingual to defaults when auto-detection is disabled
+        if (isMultilingualIntl) {
+          fallbackLanguage = 'en';
+        } else if (isMultilingualIndian) {
+          fallbackLanguage = 'hi';
+        }
+      }
+
       return {
-        provider: enableAutoLanguageDetection || isMultilingualIndian || isMultilingualIntl ? 'deepgram-multi' : 'deepgram',
+        provider: fallbackLanguage === 'multi' ? 'deepgram-multi' : 'deepgram',
         reason: `Fallback to Deepgram (requested provider ${preferredProvider} unavailable)`,
-        language: enableAutoLanguageDetection || isMultilingualIndian || isMultilingualIntl ? 'multi' : language
+        language: fallbackLanguage
       };
     }
 

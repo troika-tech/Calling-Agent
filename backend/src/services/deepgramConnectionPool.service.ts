@@ -104,6 +104,7 @@ export class DeepgramConnectionPool {
       endpointing?: number;
       vadEvents?: boolean;
       language?: string;
+      autoDetection?: boolean;  // Explicit flag for auto-detection
       onTranscript?: (result: DeepgramTranscriptionResult) => void;
       onSpeechStarted?: () => void;
       onSpeechEnded?: () => void;

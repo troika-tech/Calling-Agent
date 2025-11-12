@@ -127,6 +127,7 @@ export class DeepgramService {
     endpointing?: number;  // ms of silence to detect end of speech (default: 200)
     vadEvents?: boolean;   // Enable VAD events (speech_start/end)
     language?: string;
+    autoDetection?: boolean;  // Explicit flag for auto-detection (takes precedence over language value)
     onTranscript?: (result: DeepgramTranscriptionResult) => void;
     onSpeechStarted?: () => void;
     onSpeechEnded?: () => void;
@@ -138,11 +139,16 @@ export class DeepgramService {
     try {
       logger.info('Creating Deepgram live connection with VAD', {
         endpointing: options?.endpointing ?? 200,
-        vadEvents: options?.vadEvents ?? true
+        vadEvents: options?.vadEvents ?? true,
+        language: options?.language,
+        autoDetection: options?.autoDetection
       });
 
       // Determine if we should use language detection or specific language
-      const useLanguageDetection = !options?.language || options.language === 'multi';
+      // Explicit autoDetection flag takes precedence
+      const useLanguageDetection = options?.autoDetection !== undefined 
+        ? options.autoDetection 
+        : (!options?.language || options.language === 'multi');
 
       // Build live connection options
       let liveOptions: any;

@@ -330,8 +330,12 @@ class ExotelVoiceHandler {
       } else if ((sttSelection.provider === 'deepgram' || sttSelection.provider === 'deepgram-multi') && deepgramService.isAvailable()) {
         try {
           const deepgramLanguage = sttSelection.language;
+          const enableAutoDetection = agent.config.enableAutoLanguageDetection || false;
 
-          logger.info('📡 Creating Deepgram live connection');
+          logger.info('📡 Creating Deepgram live connection', {
+            language: deepgramLanguage,
+            autoDetection: enableAutoDetection
+          });
 
           // Acquire connection from pool (queues if at capacity)
           const deepgramConnection = await deepgramConnectionPool.acquireConnection(
@@ -340,6 +344,7 @@ class ExotelVoiceHandler {
               endpointing: 200,  // 200ms silence to trigger UtteranceEnd (reduced from 1000ms for better compatibility with multilingual mode)
               vadEvents: true,
               language: deepgramLanguage,
+              autoDetection: enableAutoDetection,  // Explicit flag for auto-detection
               onTranscript: async (result) => {
                 const currentSession = this.sessions.get(client.id);
                 if (!currentSession) return;

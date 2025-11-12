@@ -145,28 +145,35 @@ export class DeepgramService {
       const useLanguageDetection = !options?.language || options.language === 'multi';
 
       // Build live connection options
-      const liveOptions: any = {
-        model: 'nova-3',  // Use nova-3 for multilingual support
-        smart_format: true,
-        punctuate: true,
-        interim_results: true,  // Get partial results for faster UX
-        channels: 1,
-        sample_rate: 8000,  // Match Exotel's 8kHz
-        encoding: 'linear16'
-      };
-
+      let liveOptions: any;
       if (useLanguageDetection) {
-        // Enable automatic language detection for multilingual mode
-        liveOptions.detect_language = true;
-        // When using detect_language, endpointing must be disabled or set to a compatible value
-        // VAD events are also not supported with detect_language
-        logger.info('🌐 Deepgram multilingual mode enabled (detect_language: true)');
+        // When using language detection, use minimal parameters to avoid conflicts
+        // Some Deepgram features are incompatible with detect_language
+        liveOptions = {
+          model: 'nova-3',
+          detect_language: true,
+          interim_results: true,  // Get partial results for faster UX
+          channels: 1,
+          sample_rate: 8000,  // Match Exotel's 8kHz
+          encoding: 'linear16'
+          // Note: smart_format, punctuate, endpointing, and vad_events are NOT set
+          // when using detect_language to avoid API conflicts
+        };
+        logger.info('🌐 Deepgram multilingual mode enabled (detect_language: true) - using minimal parameters');
       } else {
-        // Use specific language
-        liveOptions.language = options.language;
-        // Only set endpointing and vad_events when NOT using language detection
-        liveOptions.endpointing = options?.endpointing ?? 200;  // 200ms silence = end of speech
-        liveOptions.vad_events = options?.vadEvents ?? true;
+        // Use full feature set when language is specified
+        liveOptions = {
+          model: 'nova-3',
+          language: options.language,
+          smart_format: true,
+          punctuate: true,
+          interim_results: true,
+          endpointing: options?.endpointing ?? 200,  // 200ms silence = end of speech
+          vad_events: options?.vadEvents ?? true,
+          channels: 1,
+          sample_rate: 8000,  // Match Exotel's 8kHz
+          encoding: 'linear16'
+        };
       }
 
       // Log the actual options being sent (for debugging)

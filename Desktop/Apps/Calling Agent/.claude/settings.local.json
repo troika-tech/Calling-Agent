@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl:*)",
+      "Bash(npm run check-agent:*)",
+      "Bash(npm run build:*)",
+      "Bash(node:*)",
+      "Bash(cat:*)",
+      "Bash(npm run dev:*)",
+      "Bash(ssh:*)",
+      "Bash(nslookup:*)",
+      "Bash(ipconfig /flushdns)",
+      "Bash(cmd.exe /c \"ipconfig /flushdns\")",
+      "Bash(powershell.exe -Command \"ipconfig /flushdns\")",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "Bash(timeout /t 5)",
+      "Bash(nul)",
+      "Bash(scp:*)",
+      "Bash(git push:*)",
+      "Bash(if exist nul del nul)",
+      "Bash(npm install:*)",
+      "Bash(if exist nul del nul 2)",
+      "Bash(npx tsc)",
+      "Bash(node_modules.bintsc)",
+      "Bash(./node_modules/.bin/tsc:*)",
+      "Bash(npx tsc:*)",
+      "Bash(timeout /t 2)",
+      "Bash(bash:*)",
+      "Bash(git checkout:*)",
+      "Bash(pm2 restart:*)",
+      "Bash(redis-cli:*)",
+      "Bash(if exist \"nul 2\" del \"nul 2\")",
+      "Bash(git reset:*)",
+      "Bash(git remote add:*)",
+      "Bash(git branch:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

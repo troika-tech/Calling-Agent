@@ -147,18 +147,19 @@ export class DeepgramService {
       // Build live connection options
       let liveOptions: any;
       if (useLanguageDetection) {
-        // When using language detection, use absolute minimal parameters
-        // Many Deepgram features conflict with detect_language
+        // Try using 'multi' language parameter instead of detect_language
+        // This is more compatible and doesn't require special API permissions
         liveOptions = {
-          model: 'nova-2',  // Use nova-2 as it has better detect_language support
-          detect_language: true,
+          model: 'nova-2',
+          language: 'multi',  // Use 'multi' instead of detect_language for better compatibility
+          interim_results: true,
           channels: 1,
           sample_rate: 8000,  // Match Exotel's 8kHz
           encoding: 'linear16'
-          // Note: interim_results, smart_format, punctuate, endpointing, and vad_events
-          // are NOT set when using detect_language to avoid API conflicts
+          // Note: smart_format, punctuate, endpointing, and vad_events are excluded
+          // to avoid conflicts with multilingual mode
         };
-        logger.info('🌐 Deepgram multilingual mode enabled (detect_language: true) - using minimal parameters with nova-2 model');
+        logger.info('🌐 Deepgram multilingual mode enabled (language: multi) - using nova-2 model');
       } else {
         // Use full feature set when language is specified
         liveOptions = {

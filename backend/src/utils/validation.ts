@@ -88,6 +88,7 @@ export const createAgentSchema = {
         .string()
         .min(2, 'Language code is required')
         .max(10, 'Invalid language code'),
+      enableAutoLanguageDetection: z.boolean().optional(),
       sttProvider: z.enum(['auto', 'deepgram', 'sarvam', 'whisper']).optional(),
       llm: z.object({
         model: z.enum([
@@ -146,6 +147,7 @@ export const updateAgentSchema = {
         settings: z.record(z.any()).optional()
       }).optional(),
       language: z.string().optional(),
+      enableAutoLanguageDetection: z.boolean().optional(),
       sttProvider: z.enum(['auto', 'deepgram', 'sarvam', 'whisper']).optional(),
       llm: z.object({
         model: z.enum([

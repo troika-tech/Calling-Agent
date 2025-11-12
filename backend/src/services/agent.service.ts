@@ -157,7 +157,11 @@ export class AgentService {
       if (data.config) {
         agent.config = {
           ...agent.config,
-          ...data.config
+          ...data.config,
+          // Explicitly handle boolean fields to ensure false values are saved
+          ...(data.config.enableAutoLanguageDetection !== undefined && {
+            enableAutoLanguageDetection: data.config.enableAutoLanguageDetection
+          })
         } as any;
       }
 

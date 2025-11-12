@@ -311,7 +311,7 @@ export default function AgentForm() {
           maxTokens: data.maxTokens || undefined,
         },
         language: data.language,
-        enableAutoLanguageDetection: data.enableAutoLanguageDetection || false,
+        enableAutoLanguageDetection: data.enableAutoLanguageDetection ?? false,
         sttProvider: data.sttProvider as any,
         endCallPhrases: data.endCallPhrases
           .split(',')

@@ -597,6 +597,14 @@ class ExotelVoiceHandler {
     // Send audio to STT streaming connection for real-time transcription
     if (session.deepgramConnection) {
       try {
+        // Check if WebSocket is ready before sending
+        const ws = session.deepgramConnection as any;
+        if (ws.readyState !== 1) {  // 1 = OPEN
+          // WebSocket not ready, buffer the audio
+          session.audioBuffer.push(audioChunk);
+          return;
+        }
+
         // Check if this is a Sarvam connection (indicated by STT provider)
         if (session.sttProvider === 'sarvam') {
           // Sarvam expects AudioContent object with data, encoding, and sample_rate

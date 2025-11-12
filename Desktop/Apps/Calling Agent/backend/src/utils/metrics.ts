@@ -1,0 +1,148 @@
+import { redisClient } from '../config/redis';
+import { logger } from './logger';
+import { TTL_CONFIG } from '../config/ttls';
+
+/**
+ * Production Metrics Collector
+ * Tracks SLIs/SLOs for the concurrency system
+ */
+class MetricsCollector {
+  private counters = new Map<string, number>();
+  private histograms = new Map<string, number[]>();
+
+  /**
+   * Increment a counter metric
+   */
+  inc(metric: string, labels: Record<string, string> = {}, value: number = 1) {
+    const key = this.makeKey(metric, labels);
+    this.counters.set(key, (this.counters.get(key) || 0) + value);
+  }
+
+  /**
+   * Observe a value in histogram (for latency measurements)
+   */
+  observe(metric: string, value: number, labels: Record<string, string> = {}) {
+    const key = this.makeKey(metric, labels);
+    if (!this.histograms.has(key)) {
+      this.histograms.set(key, []);
+    }
+    this.histograms.get(key)!.push(value);
+  }
+
+  /**
+   * Set a gauge value (stored in Redis)
+   */
+  async gauge(metric: string, value: number, labels: Record<string, string> = {}) {
+    const key = this.makeKey(metric, labels);
+    await redisClient.setEx(`metrics:gauge:${key}`, 300, value.toString());
+  }
+
+  /**
+   * Get gauge value
+   */
+  async getGauge(metric: string, labels: Record<string, string> = {}): Promise<number> {
+    const key = this.makeKey(metric, labels);
+    const value = await redisClient.get(`metrics:gauge:${key}`);
+    return value ? parseFloat(value) : 0;
+  }
+
+  /**
+   * Make metric key from name + labels
+   */
+  private makeKey(metric: string, labels: Record<string, string>): string {
+    const labelStr = Object.entries(labels)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}=${v}`)
+      .join(',');
+    return labelStr ? `${metric}{${labelStr}}` : metric;
+  }
+
+  /**
+   * Calculate percentile from array
+   */
+  private percentile(arr: number[], p: number): number {
+    if (arr.length === 0) return 0;
+    const sorted = arr.slice().sort((a, b) => a - b);
+    const idx = Math.floor(sorted.length * (p / 100));
+    return sorted[Math.min(idx, sorted.length - 1)];
+  }
+
+  /**
+   * Export metrics snapshot
+   */
+  async export() {
+    const snapshot: any = {
+      counters: {},
+      histograms: {},
+      timestamp: new Date().toISOString()
+    };
+
+    // Counters
+    this.counters.forEach((value, key) => {
+      snapshot.counters[key] = value;
+    });
+
+    // Histograms with p50/p95/p99
+    this.histograms.forEach((values, key) => {
+      if (values.length > 0) {
+        snapshot.histograms[key] = {
+          count: values.length,
+          p50: this.percentile(values, 50),
+          p95: this.percentile(values, 95),
+          p99: this.percentile(values, 99),
+          max: Math.max(...values),
+          min: Math.min(...values)
+        };
+      }
+    });
+
+    // Log snapshot
+    logger.info('Metrics snapshot', snapshot);
+
+    // Reset histograms (keep counters for cumulative)
+    this.histograms.clear();
+
+    return snapshot;
+  }
+
+  /**
+   * Reset all metrics
+   */
+  reset() {
+    this.counters.clear();
+    this.histograms.clear();
+  }
+}
+
+export const metrics = new MetricsCollector();
+
+// Auto-export every interval
+setInterval(() => {
+  metrics.export().catch(err => {
+    logger.error('Metrics export failed', { error: err.message });
+  });
+}, TTL_CONFIG.metricsExportInterval);
+
+/**
+ * Key metrics to track:
+ *
+ * Counters:
+ * - promoter_conflicts: Failed mutex acquisitions
+ * - gate_violation: Jobs without promoteSeq
+ * - gate_repair: Gate-less job repairs
+ * - gate_hard_sync: Hard-synced jobs after 5 repairs
+ * - duplicate_enqueue: Duplicate contact enqueues
+ * - orphaned_reservations_recovered: Reaps by janitor
+ * - bullmq_waitlist_rebuilt: Reconciler rebuilds
+ *
+ * Histograms (ms):
+ * - pre_to_active_upgrade_latency_ms: Pre-dial → active upgrade time
+ * - promotion_latency_ms: Pop → promote time
+ * - slot_wait_time_ms: Job enqueue → slot acquisition time
+ *
+ * Gauges:
+ * - waitlist_len: Current waitlist size (per campaign, per priority)
+ * - inflight_calls: Current SCARD (per campaign)
+ * - reserved_slots: Current reserved counter (per campaign)
+ * - saturation: (inflight + reserved) / limit (per campaign)
+ */

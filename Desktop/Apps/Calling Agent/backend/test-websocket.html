@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebSocket Voice Pipeline Test</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 30px;
+    }
+    .section {
+      margin-bottom: 25px;
+      padding: 15px;
+      background: #f9f9f9;
+      border-radius: 5px;
+    }
+    .section h3 {
+      margin-top: 0;
+      color: #555;
+    }
+    input, button, textarea {
+      padding: 10px;
+      margin: 5px 0;
+      border-radius: 5px;
+      border: 1px solid #ddd;
+      font-size: 14px;
+    }
+    input {
+      width: calc(100% - 22px);
+    }
+    button {
+      background: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+      padding: 10px 20px;
+      margin-right: 10px;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .status {
+      padding: 10px;
+      border-radius: 5px;
+      margin: 10px 0;
+      font-weight: bold;
+    }
+    .status.connected {
+      background: #d4edda;
+      color: #155724;
+    }
+    .status.disconnected {
+      background: #f8d7da;
+      color: #721c24;
+    }
+    .status.processing {
+      background: #fff3cd;
+      color: #856404;
+    }
+    #log {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 15px;
+      border-radius: 5px;
+      height: 300px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      margin-top: 10px;
+    }
+    .log-entry {
+      margin: 5px 0;
+      padding: 5px;
+      border-left: 3px solid #007bff;
+      padding-left: 10px;
+    }
+    .log-entry.error {
+      border-left-color: #dc3545;
+      color: #ff6b6b;
+    }
+    .log-entry.success {
+      border-left-color: #28a745;
+      color: #51cf66;
+    }
+    .log-entry.info {
+      border-left-color: #17a2b8;
+      color: #4dabf7;
+    }
+    textarea {
+      width: calc(100% - 22px);
+      min-height: 100px;
+      font-family: inherit;
+    }
+    .record-btn {
+      background: #dc3545;
+      font-size: 16px;
+      padding: 15px 30px;
+    }
+    .record-btn.recording {
+      background: #28a745;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+    .response-section {
+      margin-top: 20px;
+      padding: 15px;
+      background: #e9ecef;
+      border-radius: 5px;
+      min-height: 100px;
+    }
+    .response-text {
+      font-size: 16px;
+      line-height: 1.5;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎙️ Voice Pipeline WebSocket Test</h1>
+
+    <!-- Connection Status -->
+    <div class="section">
+      <h3>Connection</h3>
+      <div id="status" class="status disconnected">Disconnected</div>
+      <button id="connectBtn" onclick="connect()">Connect</button>
+      <button id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+    </div>
+
+    <!-- Session Initialization -->
+    <div class="section">
+      <h3>Initialize Session</h3>
+      <input type="text" id="agentId" placeholder="Agent ID (MongoDB ObjectId)" />
+      <input type="text" id="callLogId" placeholder="Call Log ID (MongoDB ObjectId)" />
+      <button id="initBtn" onclick="initSession()" disabled>Initialize Session</button>
+    </div>
+
+    <!-- Text Test -->
+    <div class="section">
+      <h3>Text Test (No Audio)</h3>
+      <textarea id="textInput" placeholder="Enter text message to send to the AI..."></textarea>
+      <button id="sendTextBtn" onclick="sendText()" disabled>Send Text</button>
+    </div>
+
+    <!-- Audio Test -->
+    <div class="section">
+      <h3>Audio Test (Microphone)</h3>
+      <button id="recordBtn" class="record-btn" onclick="toggleRecording()" disabled>🎤 Start Recording</button>
+      <p style="color: #666; font-size: 12px; margin-top: 10px;">
+        Note: Click to start recording, click again to stop and send audio to the pipeline
+      </p>
+    </div>
+
+    <!-- AI Response -->
+    <div class="section">
+      <h3>AI Response</h3>
+      <div class="response-section">
+        <div id="responseText" class="response-text">No response yet...</div>
+      </div>
+      <audio id="audioPlayer" controls style="width: 100%; margin-top: 10px;"></audio>
+    </div>
+
+    <!-- Event Log -->
+    <div class="section">
+      <h3>Event Log</h3>
+      <div id="log"></div>
+    </div>
+  </div>
+
+  <script>
+    let ws = null;
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+
+    // WebSocket connection
+    function connect() {
+      const wsUrl = 'ws://localhost:5000/ws';
+      addLog(`Connecting to ${wsUrl}...`, 'info');
+
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        addLog('WebSocket connected!', 'success');
+        document.getElementById('status').textContent = 'Connected';
+        document.getElementById('status').className = 'status connected';
+        document.getElementById('connectBtn').disabled = true;
+        document.getElementById('disconnectBtn').disabled = false;
+        document.getElementById('initBtn').disabled = false;
+      };
+
+      ws.onclose = () => {
+        addLog('WebSocket disconnected', 'error');
+        document.getElementById('status').textContent = 'Disconnected';
+        document.getElementById('status').className = 'status disconnected';
+        document.getElementById('connectBtn').disabled = false;
+        document.getElementById('disconnectBtn').disabled = true;
+        document.getElementById('initBtn').disabled = true;
+        document.getElementById('sendTextBtn').disabled = true;
+        document.getElementById('recordBtn').disabled = true;
+      };
+
+      ws.onerror = (error) => {
+        addLog(`WebSocket error: ${error.message}`, 'error');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          handleMessage(message);
+        } catch (err) {
+          addLog(`Failed to parse message: ${err.message}`, 'error');
+        }
+      };
+    }
+
+    function disconnect() {
+      if (ws) {
+        ws.close();
+        ws = null;
+      }
+    }
+
+    // Session initialization
+    function initSession() {
+      const agentId = document.getElementById('agentId').value.trim();
+      const callLogId = document.getElementById('callLogId').value.trim();
+
+      if (!agentId || !callLogId) {
+        alert('Please enter both Agent ID and Call Log ID');
+        return;
+      }
+
+      addLog(`Initializing session with Agent: ${agentId}, CallLog: ${callLogId}`, 'info');
+
+      sendMessage({
+        type: 'init',
+        data: { agentId, callLogId }
+      });
+    }
+
+    // Text message
+    function sendText() {
+      const text = document.getElementById('textInput').value.trim();
+      if (!text) {
+        alert('Please enter some text');
+        return;
+      }
+
+      addLog(`Sending text: "${text}"`, 'info');
+      sendMessage({
+        type: 'text',
+        data: { text }
+      });
+
+      document.getElementById('textInput').value = '';
+    }
+
+    // Audio recording
+    async function toggleRecording() {
+      if (!isRecording) {
+        await startRecording();
+      } else {
+        await stopRecording();
+      }
+    }
+
+    async function startRecording() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = (event) => {
+          audioChunks.push(event.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+          const arrayBuffer = await audioBlob.arrayBuffer();
+          const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+
+          addLog(`Sending audio (${audioBlob.size} bytes)`, 'info');
+          sendMessage({
+            type: 'audio',
+            data: { audio: base64Audio }
+          });
+        };
+
+        mediaRecorder.start();
+        isRecording = true;
+
+        document.getElementById('recordBtn').textContent = '⏹️ Stop Recording';
+        document.getElementById('recordBtn').classList.add('recording');
+        document.getElementById('status').textContent = 'Recording...';
+        document.getElementById('status').className = 'status processing';
+
+        addLog('Recording started', 'success');
+      } catch (err) {
+        addLog(`Failed to start recording: ${err.message}`, 'error');
+      }
+    }
+
+    async function stopRecording() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        isRecording = false;
+
+        document.getElementById('recordBtn').textContent = '🎤 Start Recording';
+        document.getElementById('recordBtn').classList.remove('recording');
+        document.getElementById('status').textContent = 'Connected';
+        document.getElementById('status').className = 'status connected';
+
+        addLog('Recording stopped', 'info');
+      }
+    }
+
+    // Message handling
+    function handleMessage(message) {
+      addLog(`Received: ${message.type}`, 'info');
+
+      switch (message.type) {
+        case 'init_success':
+          addLog(`Session initialized: ${message.data.agentName}`, 'success');
+          document.getElementById('sendTextBtn').disabled = false;
+          document.getElementById('recordBtn').disabled = false;
+          break;
+
+        case 'stt_start':
+          addLog('Speech-to-Text started...', 'info');
+          document.getElementById('status').textContent = 'Transcribing...';
+          document.getElementById('status').className = 'status processing';
+          break;
+
+        case 'stt_complete':
+          addLog(`Transcription: "${message.data.text}"`, 'success');
+          break;
+
+        case 'llm_start':
+          addLog('LLM processing...', 'info');
+          document.getElementById('status').textContent = 'Thinking...';
+          break;
+
+        case 'llm_chunk':
+          // Update response text in real-time
+          document.getElementById('responseText').textContent = message.data.fullText;
+          break;
+
+        case 'llm_complete':
+          addLog(`LLM response: "${message.data.text}"`, 'success');
+          document.getElementById('responseText').textContent = message.data.text;
+          break;
+
+        case 'tts_start':
+          addLog('Text-to-Speech started...', 'info');
+          document.getElementById('status').textContent = 'Generating speech...';
+          break;
+
+        case 'tts_complete':
+          addLog('Text-to-Speech complete', 'success');
+          break;
+
+        case 'audio_response':
+          addLog('Playing audio response', 'success');
+          const audioData = message.data.audio;
+          const audioBlob = base64ToBlob(audioData, 'audio/mpeg');
+          const audioUrl = URL.createObjectURL(audioBlob);
+
+          const audioPlayer = document.getElementById('audioPlayer');
+          audioPlayer.src = audioUrl;
+          audioPlayer.play();
+
+          document.getElementById('status').textContent = 'Connected';
+          document.getElementById('status').className = 'status connected';
+          break;
+
+        case 'text_response':
+          addLog(`Text response: "${message.data.text}"`, 'success');
+          document.getElementById('responseText').textContent = message.data.text;
+          break;
+
+        case 'processing_started':
+          document.getElementById('status').textContent = 'Processing...';
+          document.getElementById('status').className = 'status processing';
+          break;
+
+        case 'processing_complete':
+          document.getElementById('status').textContent = 'Connected';
+          document.getElementById('status').className = 'status connected';
+          break;
+
+        case 'session_ended':
+          addLog('Session ended', 'info');
+          break;
+
+        case 'error':
+          addLog(`Error: ${message.data.error}`, 'error');
+          document.getElementById('status').textContent = 'Error';
+          document.getElementById('status').className = 'status disconnected';
+          break;
+
+        default:
+          addLog(`Unknown message type: ${message.type}`, 'info');
+      }
+    }
+
+    // Helper functions
+    function sendMessage(message) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(message));
+      } else {
+        addLog('WebSocket not connected', 'error');
+      }
+    }
+
+    function addLog(message, type = 'info') {
+      const log = document.getElementById('log');
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `[${timestamp}] ${message}`;
+      log.appendChild(entry);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function base64ToBlob(base64, mimeType) {
+      const byteCharacters = atob(base64);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      return new Blob([byteArray], { type: mimeType });
+    }
+  </script>
+</body>
+</html>

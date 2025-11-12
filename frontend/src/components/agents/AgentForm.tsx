@@ -200,7 +200,7 @@ export default function AgentForm() {
       setValue('temperature', agent.config.llm.temperature);
       setValue('maxTokens', agent.config.llm.maxTokens || 300);
       setValue('language', agent.config.language);
-      setValue('enableAutoLanguageDetection', agent.config.enableAutoLanguageDetection || false);
+      setValue('enableAutoLanguageDetection', agent.config.enableAutoLanguageDetection ?? false);
       setValue('sttProvider', agent.config.sttProvider || 'auto');
       setValue('endCallPhrases', agent.config.endCallPhrases?.join(', ') || 'goodbye, bye, end call');
     } catch (error) {

@@ -49,6 +49,7 @@ export interface AgentConfig {
     maxTokens?: number;
   };
   language: string;
+  enableAutoLanguageDetection?: boolean;  // Enable automatic language detection
   sttProvider?: 'auto' | 'deepgram' | 'sarvam' | 'whisper';  // STT provider selection
   endCallPhrases: string[];
   voicemailDetection?: {

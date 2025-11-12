@@ -254,18 +254,60 @@ class ExotelVoiceHandler {
                 const currentSession = this.sessions.get(client.id);
                 if (!currentSession) return;
 
+                // Handle language detection from Sarvam response
+                if (result.language && currentSession.config.enableAutoLanguageDetection) {
+                  const detectedLanguage = result.language;
+                  const previousLanguage = currentSession.detectedLanguage;
+                  const languageChanged = previousLanguage && previousLanguage !== detectedLanguage;
+
+                  currentSession.detectedLanguage = detectedLanguage;
+
+                  if (languageChanged) {
+                    logger.info('🔄 LANGUAGE SWITCH DETECTED (Sarvam)', {
+                      clientId: client.id,
+                      previousLanguage,
+                      newLanguage: detectedLanguage
+                    });
+
+                    // Update language in voice pipeline service
+                    if (voicePipelineService) {
+                      await voicePipelineService.updateDetectedLanguage(
+                        currentSession.callLogId,
+                        detectedLanguage,
+                        0.9  // Sarvam doesn't provide confidence, use default
+                      );
+                    }
+                  } else if (!previousLanguage) {
+                    // First language detection
+                    logger.info('🌍 LANGUAGE DETECTED (Sarvam)', {
+                      clientId: client.id,
+                      detectedLanguage
+                    });
+
+                    if (voicePipelineService) {
+                      await voicePipelineService.updateDetectedLanguage(
+                        currentSession.callLogId,
+                        detectedLanguage,
+                        0.9
+                      );
+                    }
+                  }
+                }
+
                 if (result.isFinal && result.text.trim().length > 0) {
                   currentSession.userTranscript = (currentSession.userTranscript || '') + ' ' + result.text;
                   logger.info('📝 FINAL TRANSCRIPT CAPTURED', {
                     clientId: client.id,
                     text: result.text,
-                    accumulated: currentSession.userTranscript
+                    accumulated: currentSession.userTranscript,
+                    detectedLanguage: result.language
                   });
                 } else if (result.text.trim().length > 0) {
                   currentSession.partialTranscript = result.text;
                   logger.info('📝 PARTIAL TRANSCRIPT', {
                     clientId: client.id,
-                    text: result.text
+                    text: result.text,
+                    detectedLanguage: result.language
                   });
 
                   // Start LLM as soon as we have 3+ words (parallel processing)

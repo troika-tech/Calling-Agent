@@ -640,11 +640,17 @@ class ExotelVoiceHandler {
             return;
           }
 
-          // Sarvam expects raw PCM bytes when input_audio_codec is 'pcm_s16le' (set in query params)
-          // The audio format is configured via WebSocket query parameters, not in the message
-          // Send raw PCM bytes directly, just like Deepgram
+          // Sarvam expects audio in JSON envelope with base64 data
           try {
-            session.deepgramConnection.send(audioChunk);
+            const sarvamPayload = {
+              audio: {
+                data: audioChunk.toString('base64'),
+                encoding: 'audio/wav',
+                sample_rate: 8000
+              }
+            };
+            const jsonMessage = JSON.stringify(sarvamPayload);
+            session.deepgramConnection.send(jsonMessage);
 
             // Log audio chunks for debugging (only log every 50th chunk to reduce noise)
             if (!session.audioChunkCounter) session.audioChunkCounter = 0;
@@ -654,6 +660,7 @@ class ExotelVoiceHandler {
               logger.info('Audio sent to Sarvam', {
                 chunkNumber: session.audioChunkCounter,
                 audioSize: audioChunk.length,
+                base64Length: sarvamPayload.audio.data.length,
                 connectionState: session.deepgramConnection?.readyState || 'unknown',
                 clientId: client.id
               });

@@ -298,7 +298,8 @@ class ExotelVoiceHandler {
 
                     // CRITICAL: Prevent processing if agent just finished speaking (cooldown period)
                     // This prevents the agent from processing its own voice or immediately re-processing
-                    const COOLDOWN_PERIOD_MS = 2000; // 2 seconds cooldown after agent speaks
+                    // Use shorter cooldown (1.5s) to allow legitimate user input while blocking echo
+                    const COOLDOWN_PERIOD_MS = 1500; // 1.5 seconds cooldown after agent speaks
                     const timeSinceLastResponse = session.lastAgentResponseTime 
                       ? Date.now() - session.lastAgentResponseTime 
                       : Infinity;
@@ -307,7 +308,8 @@ class ExotelVoiceHandler {
                       logger.debug('Skipping Sarvam timeout - agent just finished speaking (cooldown active)', {
                         clientId: client.id,
                         timeSinceLastResponse: `${timeSinceLastResponse}ms`,
-                        cooldownRemaining: `${COOLDOWN_PERIOD_MS - timeSinceLastResponse}ms`
+                        cooldownRemaining: `${COOLDOWN_PERIOD_MS - timeSinceLastResponse}ms`,
+                        transcript: session.userTranscript?.substring(0, 50) || 'empty'
                       });
                       // Clear the transcript to prevent it from being processed later
                       session.userTranscript = '';
@@ -366,7 +368,8 @@ class ExotelVoiceHandler {
                 }
 
                 // CRITICAL: Prevent processing if agent just finished speaking (cooldown period)
-                const COOLDOWN_PERIOD_MS = 2000; // 2 seconds cooldown after agent speaks
+                // Use shorter cooldown (1.5s) to allow legitimate user input while blocking echo
+                const COOLDOWN_PERIOD_MS = 1500; // 1.5 seconds cooldown after agent speaks
                 const timeSinceLastResponse = currentSession.lastAgentResponseTime 
                   ? Date.now() - currentSession.lastAgentResponseTime 
                   : Infinity;
@@ -375,7 +378,8 @@ class ExotelVoiceHandler {
                   logger.debug('Skipping END_SPEECH - agent just finished speaking (cooldown active)', {
                     clientId: client.id,
                     timeSinceLastResponse: `${timeSinceLastResponse}ms`,
-                    cooldownRemaining: `${COOLDOWN_PERIOD_MS - timeSinceLastResponse}ms`
+                    cooldownRemaining: `${COOLDOWN_PERIOD_MS - timeSinceLastResponse}ms`,
+                    transcript: currentSession.userTranscript?.substring(0, 50) || 'empty'
                   });
                   // Clear the transcript to prevent it from being processed later
                   currentSession.userTranscript = '';
@@ -1176,8 +1180,11 @@ class ExotelVoiceHandler {
         return;
       }
 
-      // DON'T clear transcript yet - we'll clear it after agent finishes speaking
-      // This prevents the agent from processing its own voice
+      // CRITICAL: Clear transcript IMMEDIATELY after extracting it (like reference code)
+      // This prevents the agent from processing the same transcript multiple times
+      // or processing its own voice that might be picked up
+      session.userTranscript = '';
+      session.partialTranscript = '';
 
 
 
@@ -1866,14 +1873,13 @@ class ExotelVoiceHandler {
         error: error.message
       });
     } finally {
-      // CRITICAL: Clear transcript and set cooldown AFTER agent finishes speaking
-      // This prevents the agent from processing its own voice or immediately re-processing
-      session.userTranscript = '';
-      session.partialTranscript = '';
-      session.lastAgentResponseTime = Date.now(); // Set cooldown timestamp
+      // Set cooldown timestamp AFTER agent finishes speaking
+      // Transcript was already cleared at the start of processing (line 1182-1183)
+      // This prevents immediate re-processing of agent's own voice
+      session.lastAgentResponseTime = Date.now();
       session.isProcessing = false;
       
-      logger.debug('✅ Agent response complete - transcript cleared, cooldown set', {
+      logger.debug('✅ Agent response complete - cooldown set', {
         clientId: client.id,
         cooldownTime: session.lastAgentResponseTime
       });

@@ -804,6 +804,7 @@ Company context:
                     <option value="multilingual-intl">🌐 Multilingual International (English, Spanish, German, French, etc.)</option>
                   </optgroup>
                   <optgroup label="🇮🇳 Indian Languages (Sarvam Recommended)">
+                    <option value="en">English (Indian)</option>
                     <option value="hi">Hindi (हिन्दी)</option>
                     <option value="bn">Bengali (বাংলা)</option>
                     <option value="ta">Tamil (தமிழ்)</option>
@@ -879,7 +880,7 @@ Company context:
 
                 <div className="mt-3 text-xs text-neutral-600 space-y-1">
                   <p><strong>Deepgram:</strong> Optimized for English, Spanish, German, French, and 30+ international languages</p>
-                  <p><strong>Sarvam:</strong> Specialized in 10 Indian languages - Hindi, Bengali, Tamil, Telugu, Kannada, Malayalam, Marathi, Gujarati, Punjabi, Odia</p>
+                  <p><strong>Sarvam:</strong> Specialized in 11 languages - English (Indian), Hindi, Bengali, Tamil, Telugu, Kannada, Malayalam, Marathi, Gujarati, Punjabi, Odia</p>
                 </div>
               </div>
             </div>

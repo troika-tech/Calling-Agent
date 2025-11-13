@@ -27,7 +27,7 @@ export const SUPPORTED_LANGUAGES: Record<string, LanguageConfig> = {
     code: 'en',
     name: 'English',
     nativeName: 'English',
-    sttProviders: ['whisper', 'deepgram'],
+    sttProviders: ['whisper', 'deepgram', 'sarvam'],  // Added Sarvam for English (Indian variant)
     ttsProviders: ['elevenlabs', 'deepgram', 'openai'],
     defaultVoice: {
       provider: 'deepgram',

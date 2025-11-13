@@ -234,11 +234,21 @@ class ExotelVoiceHandler {
         reason: sttSelection.reason,
         language: sttSelection.language,
         autoDetect: agent.config.enableAutoLanguageDetection,
-        configuredProvider: agent.config.sttProvider || 'deepgram'
+        configuredProvider: agent.config.sttProvider || 'deepgram',
+        sarvamAvailable: sarvamService.isAvailable(),
+        deepgramAvailable: deepgramService.isAvailable()
       });
 
       // Create STT connection based on selected provider
-      if (sttSelection.provider === 'sarvam' && sarvamService.isAvailable()) {
+      if (sttSelection.provider === 'sarvam') {
+        if (!sarvamService.isAvailable()) {
+          logger.error('❌ Sarvam selected but service not available - check SARVAM_API_KEY', {
+            clientId: client.id,
+            agentLanguage: agent.config.language,
+            selectedLanguage: sttSelection.language
+          });
+          // Fall through to Deepgram fallback
+        } else {
         try {
           logger.info('📡 Creating Sarvam live connection for Indian language', {
             selectedLanguage: sttSelection.language,
@@ -325,11 +335,14 @@ class ExotelVoiceHandler {
             model: 'saarika:v2.5'
           });
         } catch (error: any) {
-          logger.error('Failed to create Sarvam connection', {
+          logger.error('❌ Failed to create Sarvam connection', {
             clientId: client.id,
-            error: error.message
+            error: error.message,
+            errorStack: error.stack,
+            selectedLanguage: sttSelection.language
           });
           // Will fall back to batch STT processing
+        }
         }
       } else if ((sttSelection.provider === 'deepgram' || sttSelection.provider === 'deepgram-multi') && deepgramService.isAvailable()) {
         try {
@@ -617,20 +630,39 @@ class ExotelVoiceHandler {
       try {
         // Check if this is a Sarvam connection (indicated by STT provider)
         if (session.sttProvider === 'sarvam') {
+          // Check if WebSocket is ready (OPEN = 1)
+          if (!session.deepgramConnection || session.deepgramConnection.readyState !== 1) {
+            logger.warn('⚠️ Sarvam WebSocket not ready, skipping audio chunk', {
+              clientId: client.id,
+              readyState: session.deepgramConnection?.readyState || 'null',
+              connectionExists: !!session.deepgramConnection
+            });
+            return;
+          }
+
           // Sarvam expects raw PCM bytes when input_audio_codec is 'pcm_s16le' (set in query params)
           // The audio format is configured via WebSocket query parameters, not in the message
           // Send raw PCM bytes directly, just like Deepgram
-          session.deepgramConnection.send(audioChunk);
+          try {
+            session.deepgramConnection.send(audioChunk);
 
-          // Log audio chunks for debugging (only log every 50th chunk to reduce noise)
-          if (!session.audioChunkCounter) session.audioChunkCounter = 0;
-          session.audioChunkCounter++;
+            // Log audio chunks for debugging (only log every 50th chunk to reduce noise)
+            if (!session.audioChunkCounter) session.audioChunkCounter = 0;
+            session.audioChunkCounter++;
 
-          if (session.audioChunkCounter === 1 || session.audioChunkCounter % 50 === 0) {
-            logger.info('Audio sent to Sarvam', {
-              chunkNumber: session.audioChunkCounter,
+            if (session.audioChunkCounter === 1 || session.audioChunkCounter % 50 === 0) {
+              logger.info('Audio sent to Sarvam', {
+                chunkNumber: session.audioChunkCounter,
+                audioSize: audioChunk.length,
+                connectionState: session.deepgramConnection?.readyState || 'unknown',
+                clientId: client.id
+              });
+            }
+          } catch (sendError: any) {
+            logger.error('❌ Failed to send audio to Sarvam', {
+              error: sendError.message,
               audioSize: audioChunk.length,
-              connectionState: session.deepgramConnection?.readyState || 'unknown',
+              connectionState: session.deepgramConnection?.readyState,
               clientId: client.id
             });
           }

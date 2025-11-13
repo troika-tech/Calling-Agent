@@ -268,15 +268,19 @@ export class SarvamService {
       });
 
       ws.on('error', (error: Error) => {
-        logger.error('Sarvam live connection error', {
-          error: error.message
+        logger.error('❌ Sarvam WebSocket connection error', {
+          error: error.message,
+          errorStack: error.stack,
+          language: sarvamLanguage,
+          model: model
         });
       });
 
       ws.on('close', (code: number, reason: Buffer) => {
         logger.info('Sarvam live connection closed', {
           code,
-          reason: reason.toString()
+          reason: reason.toString(),
+          language: sarvamLanguage
         });
       });
 

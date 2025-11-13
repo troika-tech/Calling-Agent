@@ -222,34 +222,40 @@ export class SarvamService {
 
           // Handle different message types based on Sarvam API documentation
           // Correct message types: 'transcript', 'speech_start', 'speech_end', 'error'
-          if (message.type === 'speech_start') {
-            // VAD event: Speech started
-            logger.info('🎤 SPEECH STARTED (Sarvam VAD)');
-            options.onSpeechStarted?.();
-          } else if (message.type === 'speech_end') {
-            // VAD event: Speech ended
-            logger.info('🔇 SPEECH ENDED (Sarvam VAD)');
-            options.onSpeechEnded?.();
-          } else if (message.type === 'transcript') {
-            // Transcription data
-            const transcript = message.transcript || '';
-            const isFinal = true;  // Sarvam sends final transcripts
-            const confidence = 1.0;  // Sarvam doesn't provide confidence scores
+          if (message.type === 'events') {
+            const signalType = message.data?.signal_type;
+            if (signalType === 'START_SPEECH') {
+              logger.info('🎤 SPEECH STARTED (Sarvam VAD)', { signalType });
+              options.onSpeechStarted?.();
+            } else if (signalType === 'END_SPEECH') {
+              logger.info('🔇 SPEECH ENDED (Sarvam VAD)', { signalType });
+              options.onSpeechEnded?.();
+            } else {
+              logger.debug('Sarvam event received', { signalType });
+            }
+          } else if (message.type === 'data' || message.type === 'transcript') {
+            const payload = message.data || message;
+            const transcript = payload.transcript || '';
+            const languageCode = payload.language_code || sarvamLanguage;
+            const audioDuration = payload.audio_duration;
+            const processingLatency = payload.processing_latency;
 
             if (transcript && transcript.trim().length > 0) {
               logger.info('📝 Sarvam transcript received', {
                 text: transcript,
-                language: message.language_code,
-                audioDuration: message.audio_duration,
-                processingLatency: message.processing_latency
+                language: languageCode,
+                audioDuration,
+                processingLatency
               });
 
               options.onTranscript?.({
                 text: transcript,
-                confidence,
-                isFinal,
-                language: message.language_code || sarvamLanguage
+                confidence: 1.0,
+                isFinal: true,
+                language: languageCode
               });
+            } else {
+              logger.debug('Sarvam data message without transcript', { payload });
             }
           } else if (message.type === 'error') {
             logger.error('❌ Sarvam STT Error', {

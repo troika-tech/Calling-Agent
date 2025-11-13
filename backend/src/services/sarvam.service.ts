@@ -189,6 +189,13 @@ export class SarvamService {
 
       const wsUrl = `wss://api.sarvam.ai/speech-to-text/ws?${queryParams.toString()}`;
 
+      logger.info('🔌 Creating Sarvam WebSocket connection', {
+        url: wsUrl.replace(this.apiKey!, '***'),
+        language: sarvamLanguage,
+        model: model,
+        sampleRate: sampleRate
+      });
+
       // Create WebSocket connection with correct header
       const ws = new WebSocket(wsUrl, {
         headers: {
@@ -196,18 +203,10 @@ export class SarvamService {
         }
       });
 
-      // Set up event listeners
-      ws.on('open', () => {
-        logger.info('✅ Sarvam live connection opened successfully', {
-          language: sarvamLanguage,
-          model: model,
-          sampleRate: sampleRate,
-          inputAudioCodec: inputAudioCodec,
-          wsUrl: wsUrl.replace(this.apiKey!, '***')
-        });
-        // No config message needed - all configuration is in query parameters
-      });
+      // Track connection state
+      let connectionOpened = false;
 
+      // Set up message handler (always needed)
       ws.on('message', (data: Buffer) => {
         try {
           const message = JSON.parse(data.toString());
@@ -267,25 +266,57 @@ export class SarvamService {
         }
       });
 
-      ws.on('error', (error: Error) => {
-        logger.error('❌ Sarvam WebSocket connection error', {
-          error: error.message,
-          errorStack: error.stack,
-          language: sarvamLanguage,
-          model: model
+      // Wait for connection to open (with timeout) - Promise wrapper
+      return new Promise<WebSocket>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          if (!connectionOpened) {
+            logger.error('❌ Sarvam WebSocket connection timeout - did not open within 5 seconds', {
+              language: sarvamLanguage,
+              readyState: ws.readyState
+            });
+            ws.close();
+            reject(new ExternalServiceError('Sarvam WebSocket connection timeout'));
+          }
+        }, 5000); // 5 second timeout
+
+        // Set up open handler
+        ws.on('open', () => {
+          connectionOpened = true;
+          clearTimeout(timeout);
+          logger.info('✅ Sarvam live connection opened successfully', {
+            language: sarvamLanguage,
+            model: model,
+            sampleRate: sampleRate,
+            inputAudioCodec: inputAudioCodec,
+            wsUrl: wsUrl.replace(this.apiKey!, '***')
+          });
+          // No config message needed - all configuration is in query parameters
+          resolve(ws);
+        });
+
+        // Set up error handler
+        ws.on('error', (error: Error) => {
+          clearTimeout(timeout);
+          logger.error('❌ Sarvam WebSocket connection error', {
+            error: error.message,
+            errorStack: error.stack,
+            language: sarvamLanguage,
+            model: model,
+            readyState: ws.readyState
+          });
+          reject(new ExternalServiceError(`Sarvam WebSocket connection failed: ${error.message}`));
+        });
+
+        // Set up close handler (for logging only)
+        ws.on('close', (code: number, reason: Buffer) => {
+          logger.info('Sarvam live connection closed', {
+            code,
+            reason: reason.toString(),
+            language: sarvamLanguage,
+            wasOpened: connectionOpened
+          });
         });
       });
-
-      ws.on('close', (code: number, reason: Buffer) => {
-        logger.info('Sarvam live connection closed', {
-          code,
-          reason: reason.toString(),
-          language: sarvamLanguage
-        });
-      });
-
-      logger.info('Sarvam live connection created successfully');
-      return ws;
     } catch (error: any) {
       logger.error('Failed to create Sarvam live connection', {
         error: error.message

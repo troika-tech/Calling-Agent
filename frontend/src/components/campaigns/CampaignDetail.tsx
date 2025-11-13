@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { FiArrowLeft, FiPlay, FiPause, FiRefreshCw, FiX, FiPhone, FiUsers } from 'react-icons/fi';
 import { useCampaignStore } from '../../store/campaignStore';
+import { campaignApi } from '../../services/campaignApi';
+import type { CallLog } from '../../types';
+import { formatDuration, formatDate, formatPhoneNumber, calculateDuration } from '../../utils/format';
 
 export default function CampaignDetail() {
   const { id } = useParams<{ id: string }>();
@@ -20,6 +23,10 @@ export default function CampaignDetail() {
   } = useCampaignStore();
 
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [callLogs, setCallLogs] = useState<CallLog[]>([]);
+  const [callLogsLoading, setCallLogsLoading] = useState(false);
+  const [callLogsPage, setCallLogsPage] = useState(1);
+  const [callLogsTotal, setCallLogsTotal] = useState(0);
 
   useEffect(() => {
     if (id) {
@@ -32,15 +39,34 @@ export default function CampaignDetail() {
 
     const interval = setInterval(() => {
       fetchProgress(id);
+      loadCallLogs();
     }, 5000); // Refresh every 5 seconds
 
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRefresh, id]);
 
   const loadCampaignData = async () => {
     if (!id) return;
     await fetchCampaign(id);
     await fetchProgress(id);
+    await loadCallLogs();
+  };
+
+  const loadCallLogs = async () => {
+    if (!id) return;
+    try {
+      setCallLogsLoading(true);
+      const response = await campaignApi.getCallLogs(id, { page: callLogsPage, limit: 50 });
+      if (response.success && response.data) {
+        setCallLogs(response.data.callLogs || []);
+        setCallLogsTotal(response.data.total || 0);
+      }
+    } catch (error) {
+      console.error('Error loading call logs:', error);
+    } finally {
+      setCallLogsLoading(false);
+    }
   };
 
   const handleStart = async () => {
@@ -433,6 +459,113 @@ export default function CampaignDetail() {
             )}
           </dl>
         </div>
+      </div>
+
+      {/* Call Logs Section */}
+      <div className="bg-white shadow rounded-lg p-6 mt-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">Call Logs</h2>
+          {callLogsTotal > 0 && (
+            <span className="text-sm text-gray-500">
+              {callLogsTotal} {callLogsTotal === 1 ? 'call' : 'calls'}
+            </span>
+          )}
+        </div>
+
+        {callLogsLoading ? (
+          <div className="text-center py-8 text-gray-500">Loading call logs...</div>
+        ) : callLogs.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <FiPhone className="mx-auto mb-2 text-gray-400" size={32} />
+            <p>No call logs yet</p>
+            <p className="text-sm mt-1">Calls made in this campaign will appear here</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Agent
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Phone Number
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Duration
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Date
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 bg-white">
+                {callLogs.map((call) => {
+                  const getStatusColor = (status: string) => {
+                    const colors: Record<string, string> = {
+                      completed: 'bg-success-100 text-success-700',
+                      failed: 'bg-red-100 text-red-700',
+                      'in-progress': 'bg-primary-100 text-primary-700',
+                      'no-answer': 'bg-yellow-100 text-yellow-700',
+                      ringing: 'bg-blue-100 text-blue-700',
+                      initiated: 'bg-gray-100 text-gray-700'
+                    };
+                    return colors[status] || 'bg-gray-100 text-gray-700';
+                  };
+
+                  return (
+                    <tr key={call._id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">
+                          {typeof call.agentId === 'object' && call.agentId?.name
+                            ? call.agentId.name
+                            : 'N/A'}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="text-sm text-gray-700 font-medium">
+                          {formatPhoneNumber(call.direction === 'inbound' ? call.fromPhone : call.toPhone)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className={`px-3 py-1 text-xs font-medium rounded-full ${getStatusColor(call.status)}`}>
+                          {call.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                        {(() => {
+                          const duration = call.duration || call.durationSec;
+                          if (duration && duration > 0) {
+                            return formatDuration(duration);
+                          }
+                          const calculated = calculateDuration(call.startedAt, call.endedAt);
+                          return calculated && calculated > 0 ? formatDuration(calculated) : 'N/A';
+                        })()}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                        {formatDate(call.createdAt)}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm">
+                        <Link
+                          to={`/calls/${call._id}`}
+                          className="text-blue-600 hover:text-blue-700 font-semibold hover:underline transition-colors"
+                        >
+                          View Details →
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

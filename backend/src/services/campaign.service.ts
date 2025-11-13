@@ -396,12 +396,14 @@ export class CampaignService {
     const skip = (page - 1) * limit;
 
     const [callLogs, total] = await Promise.all([
-      CallLog.find({ 'metadata.campaignId': campaignId })
+      CallLog.find({ campaignId: new mongoose.Types.ObjectId(campaignId) })
+        .populate('agentId', 'name')
+        .populate('phoneId', 'number country')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .lean(),
-      CallLog.countDocuments({ 'metadata.campaignId': campaignId })
+      CallLog.countDocuments({ campaignId: new mongoose.Types.ObjectId(campaignId) })
     ]);
 
     return {
@@ -440,7 +442,7 @@ export class CampaignService {
 
     // Get call outcome stats
     const callStats = await CallLog.aggregate([
-      { $match: { 'metadata.campaignId': campaignId } },
+      { $match: { campaignId: new mongoose.Types.ObjectId(campaignId) } },
       {
         $group: {
           _id: '$status',

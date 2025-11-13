@@ -240,7 +240,11 @@ class ExotelVoiceHandler {
       // Create STT connection based on selected provider
       if (sttSelection.provider === 'sarvam' && sarvamService.isAvailable()) {
         try {
-          logger.info('📡 Creating Sarvam live connection for Indian language');
+          logger.info('📡 Creating Sarvam live connection for Indian language', {
+            selectedLanguage: sttSelection.language,
+            agentLanguage: agent.config.language,
+            enableAutoDetection: agent.config.enableAutoLanguageDetection
+          });
 
           // Create Sarvam WebSocket connection
           const sarvamConnection = await sarvamService.createLiveConnection({
@@ -613,30 +617,21 @@ class ExotelVoiceHandler {
       try {
         // Check if this is a Sarvam connection (indicated by STT provider)
         if (session.sttProvider === 'sarvam') {
-          // Sarvam expects AudioContent object with data, encoding, and sample_rate
-          // encoding must be "audio/wav" per validation error
-          const audioMessage = {
-            audio: {
-              data: audioChunk.toString('base64'),
-              encoding: "audio/wav",  // Sarvam requires "audio/wav" format
-              sample_rate: 8000  // Exotel sends 8kHz audio
-            }
-          };
-          const jsonMessage = JSON.stringify(audioMessage);
-          session.deepgramConnection.send(jsonMessage);
+          // Sarvam expects raw PCM bytes when input_audio_codec is 'pcm_s16le' (set in query params)
+          // The audio format is configured via WebSocket query parameters, not in the message
+          // Send raw PCM bytes directly, just like Deepgram
+          session.deepgramConnection.send(audioChunk);
 
           // Log audio chunks for debugging (only log every 50th chunk to reduce noise)
           if (!session.audioChunkCounter) session.audioChunkCounter = 0;
           session.audioChunkCounter++;
 
           if (session.audioChunkCounter === 1 || session.audioChunkCounter % 50 === 0) {
-            logger.debug('Sending audio to Sarvam', {
+            logger.info('Audio sent to Sarvam', {
               chunkNumber: session.audioChunkCounter,
               audioSize: audioChunk.length,
-              base64Length: audioMessage.audio.data.length,
-              messageLength: jsonMessage.length,
-              encoding: audioMessage.audio.encoding,
-              sampleRate: audioMessage.audio.sample_rate
+              connectionState: session.deepgramConnection?.readyState || 'unknown',
+              clientId: client.id
             });
           }
         } else {

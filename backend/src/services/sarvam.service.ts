@@ -198,7 +198,13 @@ export class SarvamService {
 
       // Set up event listeners
       ws.on('open', () => {
-        logger.info('✅ Sarvam live connection opened successfully');
+        logger.info('✅ Sarvam live connection opened successfully', {
+          language: sarvamLanguage,
+          model: model,
+          sampleRate: sampleRate,
+          inputAudioCodec: inputAudioCodec,
+          wsUrl: wsUrl.replace(this.apiKey!, '***')
+        });
         // No config message needed - all configuration is in query parameters
       });
 
@@ -206,10 +212,13 @@ export class SarvamService {
         try {
           const message = JSON.parse(data.toString());
 
-          // Log ALL messages for debugging
-          logger.debug('Sarvam WebSocket message received', {
+          // Log ALL messages for debugging (info level for visibility)
+          logger.info('📨 Sarvam WebSocket message received', {
             type: message.type,
-            fullMessage: JSON.stringify(message)
+            hasTranscript: !!message.transcript,
+            transcriptLength: message.transcript?.length || 0,
+            languageCode: message.language_code,
+            fullMessage: JSON.stringify(message).substring(0, 500) // Limit length
           });
 
           // Handle different message types based on Sarvam API documentation

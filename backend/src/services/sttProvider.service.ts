@@ -75,7 +75,7 @@ export class STTProviderService {
         return {
           provider: 'sarvam',
           reason: `Using Sarvam for multilingual Indian languages`,
-          language: 'hi'  // Default to Hindi for multilingual mode
+          language: 'multi'  // Default to Hindi for multilingual mode
         };
       }
 

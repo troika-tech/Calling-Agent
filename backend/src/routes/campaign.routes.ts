@@ -100,7 +100,17 @@ const createCampaignSchema = Joi.object({
   agentId: Joi.string().regex(/^[0-9a-fA-F]{24}$/).required().messages({
     'string.pattern.base': 'Invalid agent ID'
   }),
-  phoneId: Joi.string().regex(/^[0-9a-fA-F]{24}$/).optional().messages({
+  phoneId: Joi.string().optional().allow('').custom((value, helpers) => {
+    // If empty string, convert to undefined
+    if (value === '') {
+      return undefined;
+    }
+    // If provided, must be valid ObjectId
+    if (value && !/^[0-9a-fA-F]{24}$/.test(value)) {
+      return helpers.error('string.pattern.base');
+    }
+    return value;
+  }).messages({
     'string.pattern.base': 'Invalid phone ID'
   }),
   description: Joi.string().trim().max(1000).optional().allow(''),

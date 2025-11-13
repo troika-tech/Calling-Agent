@@ -800,6 +800,7 @@ Company context:
                     <option value="fi">Finnish (Suomi)</option>
                     <option value="da">Danish (Dansk)</option>
                     <option value="uk">Ukrainian (Українська)</option>
+                    <option value="hi">Hindi (हिन्दी)</option>
                     <option value="multilingual-intl">🌐 Multilingual International (English, Spanish, German, French, etc.)</option>
                   </optgroup>
                   <optgroup label="🇮🇳 Indian Languages (Sarvam Recommended)">

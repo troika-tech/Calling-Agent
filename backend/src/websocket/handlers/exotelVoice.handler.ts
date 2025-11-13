@@ -1416,6 +1416,14 @@ class ExotelVoiceHandler {
     }
 
     try {
+      // Send a short silence frame immediately to keep Exotel connection open while processing
+      await this.sendSilenceKeepAliveToExotel(client, session).catch((error: any) => {
+        logger.warn('Failed to send keep-alive silence to Exotel', {
+          clientId: client.id,
+          error: error.message
+        });
+      });
+
       // Combine audio chunks
       const audioData = Buffer.concat(session.audioBuffer);
       session.audioBuffer = [];
@@ -2430,6 +2438,34 @@ class ExotelVoiceHandler {
         stack: error.stack
       });
     }
+  }
+
+  /**
+   * Send a brief silence frame to Exotel to keep the WebSocket open while we process user audio
+   */
+  private async sendSilenceKeepAliveToExotel(
+    client: WebSocketClient,
+    session: VoiceSession,
+    durationMs: number = 200
+  ): Promise<void> {
+    if (client.readyState !== 1) {
+      return;
+    }
+
+    // 16 bytes per millisecond (8kHz * 2 bytes * 1 channel)
+    const bytesPerMs = 16;
+    const rawBytes = durationMs * bytesPerMs;
+    // Ensure multiple of 320 bytes (Exotel requirement) and at least 3200 (100ms)
+    const chunkMultiple = Math.max(3200, Math.ceil(rawBytes / 320) * 320);
+
+    const silenceBuffer = Buffer.alloc(chunkMultiple, 0);
+
+    await this.sendPCMAudioToExotel(client, silenceBuffer, session.streamSid);
+
+    logger.debug('Sent keep-alive silence to Exotel', {
+      clientId: client.id,
+      bytes: chunkMultiple
+    });
   }
 }
 

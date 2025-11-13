@@ -1367,6 +1367,16 @@ class ExotelVoiceHandler {
 
       // Stream the LLM response and process sentence-by-sentence
       for await (const chunk of streamGenerator) {
+        // CRITICAL: Check if WebSocket is still open before processing more chunks
+        if (client.readyState !== 1) {
+          logger.warn('WebSocket closed during LLM streaming - stopping response generation', {
+            clientId: client.id,
+            readyState: client.readyState,
+            responseSoFar: fullResponse.substring(0, 100)
+          });
+          break; // Stop generating more text if connection is closed
+        }
+
         fullResponse += chunk;
         sentenceBuffer += chunk;
 
@@ -1375,13 +1385,22 @@ class ExotelVoiceHandler {
         if (sentenceEnders.includes(lastChar) && sentenceBuffer.trim().length > 10) {
           const sentence = sentenceBuffer.trim();
 
+          // Double-check WebSocket is still open before sending TTS
+          if (client.readyState !== 1) {
+            logger.warn('WebSocket closed before sending TTS - skipping sentence', {
+              clientId: client.id,
+              sentence: sentence.substring(0, 50)
+            });
+            break;
+          }
+
           // Synthesize and stream sentence with ULTRA-LOW LATENCY
           // Deepgram streaming TTS: Send audio chunks as they're generated (sub-200ms TTFB!)
           if (session.config.voiceProvider === 'deepgram') {
             const audioDurationMs = await this.streamTTSToExotel(client, sentence, session);
             totalAudioDurationMs += audioDurationMs;
           } else {
-            // Non-streaming fallback for OpenAI/ElevenLabs
+            // Non-streaming fallback for OpenAI/ElevenLabs/Sarvam
             const audioResponse = await voicePipelineService.synthesizeText(
               sentence,
               session.config
@@ -1395,8 +1414,8 @@ class ExotelVoiceHandler {
         }
       }
 
-      // Send any remaining text in buffer
-      if (sentenceBuffer.trim().length > 0) {
+      // Send any remaining text in buffer (only if WebSocket is still open)
+      if (sentenceBuffer.trim().length > 0 && client.readyState === 1) {
         // Use streaming TTS for remaining buffer too
         if (session.config.voiceProvider === 'deepgram') {
           const audioDurationMs = await this.streamTTSToExotel(client, sentenceBuffer.trim(), session);
@@ -1409,6 +1428,11 @@ class ExotelVoiceHandler {
           await this.sendAudioToExotel(client, audioResponse, session.streamSid);
           totalAudioDurationMs += (audioResponse.length / 16000) * 1000;
         }
+      } else if (sentenceBuffer.trim().length > 0 && client.readyState !== 1) {
+        logger.warn('WebSocket closed - skipping remaining response buffer', {
+          clientId: client.id,
+          remainingText: sentenceBuffer.trim().substring(0, 50)
+        });
       }
 
       
@@ -1710,6 +1734,16 @@ class ExotelVoiceHandler {
 
       // Stream the LLM response and process sentence-by-sentence
       for await (const chunk of streamGenerator) {
+        // CRITICAL: Check if WebSocket is still open before processing more chunks
+        if (client.readyState !== 1) {
+          logger.warn('WebSocket closed during LLM streaming - stopping response generation', {
+            clientId: client.id,
+            readyState: client.readyState,
+            responseSoFar: fullResponse.substring(0, 100)
+          });
+          break; // Stop generating more text if connection is closed
+        }
+
         fullResponse += chunk;
         sentenceBuffer += chunk;
 
@@ -1718,13 +1752,22 @@ class ExotelVoiceHandler {
         if (sentenceEnders.includes(lastChar) && sentenceBuffer.trim().length > 10) {
           const sentence = sentenceBuffer.trim();
 
+          // Double-check WebSocket is still open before sending TTS
+          if (client.readyState !== 1) {
+            logger.warn('WebSocket closed before sending TTS - skipping sentence', {
+              clientId: client.id,
+              sentence: sentence.substring(0, 50)
+            });
+            break;
+          }
+
           // Synthesize and stream sentence with ULTRA-LOW LATENCY
           // Deepgram streaming TTS: Send audio chunks as they're generated (sub-200ms TTFB!)
           if (session.config.voiceProvider === 'deepgram') {
             const audioDurationMs = await this.streamTTSToExotel(client, sentence, session);
             totalAudioDurationMs += audioDurationMs;
           } else {
-            // Non-streaming fallback for OpenAI/ElevenLabs
+            // Non-streaming fallback for OpenAI/ElevenLabs/Sarvam
             const audioResponse = await voicePipelineService.synthesizeText(
               sentence,
               session.config
@@ -1738,8 +1781,8 @@ class ExotelVoiceHandler {
         }
       }
 
-      // Send any remaining text in buffer
-      if (sentenceBuffer.trim().length > 0) {
+      // Send any remaining text in buffer (only if WebSocket is still open)
+      if (sentenceBuffer.trim().length > 0 && client.readyState === 1) {
         // Use streaming TTS for remaining buffer too
         if (session.config.voiceProvider === 'deepgram') {
           const audioDurationMs = await this.streamTTSToExotel(client, sentenceBuffer.trim(), session);
@@ -1752,6 +1795,11 @@ class ExotelVoiceHandler {
           await this.sendAudioToExotel(client, audioResponse, session.streamSid);
           totalAudioDurationMs += (audioResponse.length / 16000) * 1000;
         }
+      } else if (sentenceBuffer.trim().length > 0 && client.readyState !== 1) {
+        logger.warn('WebSocket closed - skipping remaining response buffer', {
+          clientId: client.id,
+          remainingText: sentenceBuffer.trim().substring(0, 50)
+        });
       }
 
       

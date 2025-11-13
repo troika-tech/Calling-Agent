@@ -271,6 +271,33 @@ class ExotelVoiceHandler {
                 if (!currentSession) return;
 
                 if (result.isFinal && result.text.trim().length > 0) {
+                  // CRITICAL: Don't accumulate transcripts if agent is currently processing/speaking
+                  // This prevents the agent from processing its own voice
+                  if (currentSession.isProcessing) {
+                    logger.debug('Skipping final transcript - agent is currently processing', {
+                      clientId: client.id,
+                      transcript: result.text.substring(0, 50)
+                    });
+                    return;
+                  }
+
+                  // Check cooldown BEFORE accumulating transcript
+                  // This prevents accumulating agent's echo during cooldown period
+                  const COOLDOWN_PERIOD_MS = 1500; // 1.5 seconds cooldown after agent speaks
+                  const timeSinceLastResponse = currentSession.lastAgentResponseTime 
+                    ? Date.now() - currentSession.lastAgentResponseTime 
+                    : Infinity;
+                  
+                  if (timeSinceLastResponse < COOLDOWN_PERIOD_MS) {
+                    logger.debug('Skipping final transcript - agent just finished speaking (cooldown active)', {
+                      clientId: client.id,
+                      timeSinceLastResponse: `${timeSinceLastResponse}ms`,
+                      cooldownRemaining: `${COOLDOWN_PERIOD_MS - timeSinceLastResponse}ms`,
+                      transcript: result.text.substring(0, 50)
+                    });
+                    return; // Don't accumulate transcript during cooldown
+                  }
+
                   currentSession.userTranscript = (currentSession.userTranscript || '') + ' ' + result.text;
                   logger.info('📝 FINAL TRANSCRIPT CAPTURED', {
                     clientId: client.id,

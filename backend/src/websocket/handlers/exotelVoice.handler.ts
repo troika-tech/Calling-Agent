@@ -83,6 +83,7 @@ interface VoiceSession {
   earlyLLMResponse?: string;  // Buffer for LLM response started on partial transcript
   detectedLanguage?: string;  // Detected language code from Whisper transcription
   transcriptProcessTimeout?: NodeJS.Timeout;  // Timeout for processing transcript (workaround for UtteranceEnd not firing)
+  sarvamTranscriptTimeout?: NodeJS.Timeout;  // Timeout for processing Sarvam transcripts when END_SPEECH doesn't fire
   audioChunkCounter?: number;  // Counter for audio chunks sent to STT (for debugging)
   // Performance timing
   timings?: {
@@ -275,6 +276,41 @@ class ExotelVoiceHandler {
                     text: result.text,
                     accumulated: currentSession.userTranscript
                   });
+
+                  // CRITICAL: Sarvam sends final transcripts but END_SPEECH events may not fire reliably
+                  // Auto-process transcript after a delay if not already processing
+                  // This ensures the agent responds even if END_SPEECH event is missing
+                  // Reset timeout each time we get a new transcript (debouncing)
+                  if (currentSession.sarvamTranscriptTimeout) {
+                    clearTimeout(currentSession.sarvamTranscriptTimeout);
+                  }
+
+                  currentSession.sarvamTranscriptTimeout = setTimeout(async () => {
+                    const session = this.sessions.get(client.id);
+                    if (!session || session.isProcessing) {
+                      logger.debug('Skipping Sarvam timeout - session not found or already processing', {
+                        clientId: client.id,
+                        isProcessing: session?.isProcessing
+                      });
+                      return;
+                    }
+
+                    // Only process if we have a transcript and agent is not speaking
+                    if (session.userTranscript && session.userTranscript.trim().length > 0) {
+                      logger.info('⏰ Sarvam transcript timeout - processing transcript (END_SPEECH not received)', {
+                        clientId: client.id,
+                        transcript: session.userTranscript.trim()
+                      });
+
+                      session.timings!.speechEnd = Date.now();
+                      session.isProcessing = true;
+                      await this.processUserSpeechFromTranscript(client, session);
+                    } else {
+                      logger.debug('Sarvam timeout fired but no transcript to process', {
+                        clientId: client.id
+                      });
+                    }
+                  }, 1000); // 1 second delay to allow for multiple transcripts to accumulate and user to finish speaking
                 } else if (result.text.trim().length > 0) {
                   currentSession.partialTranscript = result.text;
                   logger.info('📝 PARTIAL TRANSCRIPT', {
@@ -303,9 +339,15 @@ class ExotelVoiceHandler {
                 const currentSession = this.sessions.get(client.id);
                 if (!currentSession || currentSession.isProcessing) return;
 
+                // Clear the timeout since END_SPEECH event fired
+                if (currentSession.sarvamTranscriptTimeout) {
+                  clearTimeout(currentSession.sarvamTranscriptTimeout);
+                  currentSession.sarvamTranscriptTimeout = undefined;
+                }
+
                 currentSession.timings!.speechEnd = Date.now();
 
-                logger.info('🎤 SPEECH ENDED - Processing transcript', {
+                logger.info('🎤 SPEECH ENDED (Sarvam VAD) - Processing transcript', {
                   clientId: client.id,
                   userTranscript: currentSession.userTranscript,
                   partialTranscript: currentSession.partialTranscript,
@@ -1061,6 +1103,12 @@ class ExotelVoiceHandler {
     });
 
     try {
+      // Clear Sarvam timeout when processing starts
+      if (session.sarvamTranscriptTimeout) {
+        clearTimeout(session.sarvamTranscriptTimeout);
+        session.sarvamTranscriptTimeout = undefined;
+      }
+
       const transcript = (session.userTranscript || '').trim();
 
       if (!transcript || transcript.length === 0) {

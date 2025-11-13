@@ -49,24 +49,17 @@ export class STTProviderService {
       // Determine language mode for Deepgram
       let deepgramLanguage = language;
       
-      // Only use 'multi' when auto-detection is EXPLICITLY enabled
-      // If auto-detection is disabled, map multilingual options to a default language
-      if (enableAutoLanguageDetection) {
-        // Auto-detection enabled: use 'multi' for multilingual modes, or let Deepgram auto-detect
-        if (isMultilingualIntl || isMultilingualIndian) {
-          deepgramLanguage = 'multi';
-        } else {
-          // For specific languages with auto-detection, still use 'multi' to allow detection
-          deepgramLanguage = 'multi';
-        }
+      // CRITICAL: Multilingual modes ALWAYS require 'multi' language code
+      // Multilingual mode inherently needs language detection, regardless of checkbox
+      if (isMultilingualIntl || isMultilingualIndian) {
+        // Always use 'multi' for multilingual modes - they require auto-detection
+        deepgramLanguage = 'multi';
+      } else if (enableAutoLanguageDetection) {
+        // Auto-detection enabled for specific language: use 'multi' to allow detection
+        deepgramLanguage = 'multi';
       } else {
-        // Auto-detection disabled: map multilingual options to default language
-        if (isMultilingualIntl) {
-          deepgramLanguage = 'en';  // Default to English for international multilingual
-        } else if (isMultilingualIndian) {
-          deepgramLanguage = 'hi';  // Default to Hindi for Indian multilingual
-        }
-        // For specific languages, use the language as-is
+        // Auto-detection disabled and specific language: use language as-is
+        // deepgramLanguage already set to language value above
       }
 
       return {

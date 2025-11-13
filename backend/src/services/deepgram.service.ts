@@ -146,13 +146,19 @@ export class DeepgramService {
 
       // Determine if we should use language detection or specific language
       // Explicit autoDetection flag takes precedence
+      // If language is 'multi', ALWAYS enable auto-detection (multilingual mode requires it)
       const useLanguageDetection = options?.autoDetection !== undefined 
         ? options.autoDetection 
         : (!options?.language || options.language === 'multi');
+      
+      // CRITICAL: If language is 'multi', force auto-detection regardless of flag
+      // Multilingual mode inherently requires language detection
+      const forceAutoDetection = options?.language === 'multi';
+      const finalUseLanguageDetection = forceAutoDetection || useLanguageDetection;
 
       // Build live connection options
       let liveOptions: any;
-      if (useLanguageDetection) {
+      if (finalUseLanguageDetection) {
         // Use nova-3 for better multilingual support (including Hindi)
         // Explicitly enable language detection with detect_language parameter
         liveOptions = {

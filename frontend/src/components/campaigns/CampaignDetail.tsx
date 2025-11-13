@@ -561,7 +561,22 @@ export default function CampaignDetail() {
                           if (duration && duration > 0) {
                             return formatDuration(duration);
                           }
-                          const calculated = calculateDuration(call.startedAt, call.endedAt);
+                          // Fallback: calculate from timestamps
+                          // Try startedAt/endedAt first, then fallback to createdAt for ended calls
+                          let startTime = call.startedAt;
+                          let endTime = call.endedAt;
+                          
+                          if (!startTime && call.createdAt) {
+                            startTime = call.createdAt;
+                          }
+                          
+                          if (!endTime && ['completed', 'failed', 'no-answer', 'busy', 'canceled', 'user-ended', 'agent-ended'].includes(call.status)) {
+                            // For ended calls without endedAt, we can't calculate accurately
+                            // The backend should handle this, but as a last resort we'll show N/A
+                            endTime = call.endedAt;
+                          }
+                          
+                          const calculated = calculateDuration(startTime, endTime);
                           return calculated && calculated > 0 ? formatDuration(calculated) : 'N/A';
                         })()}
                       </td>

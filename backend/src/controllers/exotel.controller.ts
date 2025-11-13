@@ -707,22 +707,23 @@ export class ExotelController {
       const callsWithDuration = calls.map(call => {
         const callObj = call.toObject();
         
-        // Only use timestamp calculation as last resort if:
-        // 1. No durationSec exists, AND
-        // 2. No exotelCallSid to fetch from Exotel, AND
-        // 3. We have timestamps to calculate from
+        // If no durationSec, try to calculate from timestamps as fallback
         // Note: This gives total call duration (including ringing), not talk time
-        if (!callObj.durationSec && !callObj.exotelCallSid) {
+        // But it's better than showing "N/A"
+        if (!callObj.durationSec) {
           let startTime = callObj.startedAt;
           let endTime = callObj.endedAt;
           
-          // For completed calls without timestamps, use fallbacks
-          if (callObj.status === 'completed') {
-            if (!startTime) {
-              startTime = callObj.createdAt;
-            }
-            if (!endTime) {
-              // Use updatedAt as fallback (last time record was updated, likely when it completed)
+          // Use fallback timestamps if startedAt/endedAt are missing
+          if (!startTime) {
+            // Use createdAt or initiatedAt as fallback
+            startTime = callObj.initiatedAt || callObj.createdAt;
+          }
+          
+          if (!endTime) {
+            // For ended calls, use updatedAt as fallback
+            // For active calls, we can't calculate duration yet
+            if (['completed', 'failed', 'no-answer', 'busy', 'canceled', 'user-ended', 'agent-ended'].includes(callObj.status)) {
               endTime = callObj.updatedAt;
             }
           }

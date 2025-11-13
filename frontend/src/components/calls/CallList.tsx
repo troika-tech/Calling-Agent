@@ -193,8 +193,22 @@ export default function CallList() {
                         if (duration && duration > 0) {
                           return formatDuration(duration);
                         }
-                        // Fallback: calculate from startedAt and endedAt
-                        const calculated = calculateDuration(call.startedAt, call.endedAt);
+                        // Fallback: calculate from timestamps
+                        // Try startedAt/endedAt first, then fallback to createdAt/updatedAt for ended calls
+                        let startTime = call.startedAt;
+                        let endTime = call.endedAt;
+                        
+                        if (!startTime && call.createdAt) {
+                          startTime = call.createdAt;
+                        }
+                        
+                        if (!endTime && ['completed', 'failed', 'no-answer', 'busy', 'canceled', 'user-ended', 'agent-ended'].includes(call.status)) {
+                          // For ended calls, try to use updatedAt if available
+                          // Note: We don't have updatedAt in the frontend type, so we'll just use what we have
+                          endTime = call.endedAt;
+                        }
+                        
+                        const calculated = calculateDuration(startTime, endTime);
                         return calculated && calculated > 0 ? formatDuration(calculated) : 'N/A';
                       })()}
                     </td>

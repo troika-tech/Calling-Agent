@@ -159,22 +159,41 @@ export class DeepgramService {
       // Build live connection options
       let liveOptions: any;
       if (finalUseLanguageDetection) {
-        // Use nova-3 for better multilingual support (including Hindi)
-        // Explicitly enable language detection with detect_language parameter
-        liveOptions = {
-          model: 'nova-3',  // Upgraded from nova-2 - better multilingual support
-          detect_language: true,  // Explicitly enable auto-detection
-          // No language parameter - Deepgram will auto-detect
-          smart_format: true,  // Re-enabled for better transcription quality
-          punctuate: true,  // Re-enabled for better transcription quality
-          interim_results: true,
-          endpointing: options?.endpointing ?? 200,  // Re-enabled for better speech boundary detection
-          vad_events: options?.vadEvents ?? true,  // Re-enabled for VAD events
-          channels: 1,
-          sample_rate: 8000,  // Match Exotel's 8kHz
-          encoding: 'linear16'
-        };
-        logger.info('🌐 Deepgram auto-detection mode - using nova-3 with detect_language=true for better multilingual support');
+        // Check if this is multilingual mode (language === 'multi')
+        const isMultilingualMode = options?.language === 'multi';
+        
+        if (isMultilingualMode) {
+          // Multilingual mode: use language='multi' parameter (Deepgram's correct way)
+          liveOptions = {
+            model: 'nova-3',
+            language: 'multi',  // ✅ Correct parameter for multilingual mode
+            interim_results: true,
+            endpointing: 100,  // ✅ 100ms recommended for multilingual (per Deepgram docs)
+            vad_events: options?.vadEvents ?? true,
+            channels: 1,
+            sample_rate: 8000,  // Match Exotel's 8kHz
+            encoding: 'linear16'
+            // Note: smart_format and punctuate may not be compatible with multilingual mode
+          };
+          logger.info('🌐 Deepgram multilingual mode - using nova-3 with language=multi for multilingual support');
+        } else {
+          // Auto-detection mode (for specific languages with auto-detection enabled)
+          // Use detect_language: true when language is not 'multi' but auto-detection is enabled
+          liveOptions = {
+            model: 'nova-3',
+            detect_language: true,  // Enable auto-detection for specific language
+            // No language parameter - Deepgram will auto-detect
+            smart_format: true,
+            punctuate: true,
+            interim_results: true,
+            endpointing: options?.endpointing ?? 200,
+            vad_events: options?.vadEvents ?? true,
+            channels: 1,
+            sample_rate: 8000,  // Match Exotel's 8kHz
+            encoding: 'linear16'
+          };
+          logger.info('🌐 Deepgram auto-detection mode - using nova-3 with detect_language=true for language detection');
+        }
       } else {
         // Use full feature set when language is specified
         liveOptions = {

@@ -544,25 +544,56 @@ export class ExotelController {
       // Calculate duration if not set but timestamps are available
       const callObj = callLog.toObject();
       if (!callObj.durationSec) {
-        let startTime = callObj.startedAt;
-        let endTime = callObj.endedAt;
-        
-        // For completed calls without timestamps, use fallbacks
-        if (callObj.status === 'completed') {
-          if (!startTime) {
-            startTime = callObj.createdAt;
-          }
-          if (!endTime) {
-            // Use updatedAt as fallback (last time record was updated, likely when it completed)
-            endTime = callObj.updatedAt;
+        // First, try to fetch from Exotel API if we have exotelCallSid
+        if (callLog.exotelCallSid) {
+          try {
+            const { exotelOutboundService } = await import('../services/exotelOutbound.service');
+            const exotelDetails = await exotelOutboundService.getCallDetails(callLog.exotelCallSid);
+            
+            if (exotelDetails.duration && exotelDetails.duration > 0) {
+              callObj.durationSec = exotelDetails.duration;
+              // Update database for future requests
+              callLog.durationSec = exotelDetails.duration;
+              await callLog.save();
+              
+              logger.info('✅ Fetched duration from Exotel API', {
+                callLogId: callLog._id.toString(),
+                exotelCallSid: callLog.exotelCallSid,
+                duration: exotelDetails.duration
+              });
+            }
+          } catch (error: any) {
+            logger.debug('Failed to fetch duration from Exotel API, using fallback', {
+              callLogId: callLog._id.toString(),
+              exotelCallSid: callLog.exotelCallSid,
+              error: error.message
+            });
+            // Continue with fallback calculation below
           }
         }
         
-        // If we have both times, calculate duration
-        if (startTime && endTime) {
-          const durationMs = new Date(endTime).getTime() - new Date(startTime).getTime();
-          if (durationMs > 0) {
-            callObj.durationSec = Math.floor(durationMs / 1000);
+        // Fallback: Calculate from timestamps if still no duration
+        if (!callObj.durationSec) {
+          let startTime = callObj.startedAt;
+          let endTime = callObj.endedAt;
+          
+          // For completed calls without timestamps, use fallbacks
+          if (callObj.status === 'completed') {
+            if (!startTime) {
+              startTime = callObj.createdAt;
+            }
+            if (!endTime) {
+              // Use updatedAt as fallback (last time record was updated, likely when it completed)
+              endTime = callObj.updatedAt;
+            }
+          }
+          
+          // If we have both times, calculate duration
+          if (startTime && endTime) {
+            const durationMs = new Date(endTime).getTime() - new Date(startTime).getTime();
+            if (durationMs > 0) {
+              callObj.durationSec = Math.floor(durationMs / 1000);
+            }
           }
         }
       }
@@ -622,6 +653,36 @@ export class ExotelController {
       ]);
 
       // Calculate duration for calls that don't have it but have timestamps
+      // For calls without duration, try fetching from Exotel (limit to first 5 to avoid too many API calls)
+      const callsWithoutDuration = calls.filter(call => !call.durationSec && call.exotelCallSid).slice(0, 5);
+      
+      // Fetch durations from Exotel for calls missing duration (limited batch)
+      const durationFetchPromises = callsWithoutDuration.map(async (call) => {
+        try {
+          const { exotelOutboundService } = await import('../services/exotelOutbound.service');
+          const exotelDetails = await exotelOutboundService.getCallDetails(call.exotelCallSid!);
+          
+          if (exotelDetails.duration && exotelDetails.duration > 0) {
+            call.durationSec = exotelDetails.duration;
+            await call.save();
+            
+            logger.debug('Fetched duration from Exotel for call in list', {
+              callLogId: call._id.toString(),
+              duration: exotelDetails.duration
+            });
+          }
+        } catch (error: any) {
+          logger.debug('Failed to fetch duration from Exotel for call in list', {
+            callLogId: call._id.toString(),
+            error: error.message
+          });
+          // Continue with fallback calculation
+        }
+      });
+      
+      // Wait for all duration fetches to complete (or timeout)
+      await Promise.allSettled(durationFetchPromises);
+
       const callsWithDuration = calls.map(call => {
         const callObj = call.toObject();
         

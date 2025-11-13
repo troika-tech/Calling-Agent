@@ -92,30 +92,88 @@ class StuckCallMonitorService {
         direction: callLog.direction
       });
 
-      // If we have exotelCallSid, try to query Exotel API for actual status
+      // If we have exotelCallSid, try to query Exotel API for actual status and duration
+      let fetchedFromExotel = false;
       if (callLog.exotelCallSid) {
         try {
-          // Note: This would require an Exotel API method to get call details
-          // For now, we'll mark as no-answer based on timeout
-          logger.info('Call has exotelCallSid but no status update received', {
+          const { exotelOutboundService } = await import('./exotelOutbound.service');
+          const exotelDetails = await exotelOutboundService.getCallDetails(callLog.exotelCallSid);
+          
+          logger.info('📞 Fetched actual call status from Exotel API', {
             callLogId: callLog._id.toString(),
-            exotelCallSid: callLog.exotelCallSid
+            exotelCallSid: callLog.exotelCallSid,
+            exotelStatus: exotelDetails.status,
+            exotelDuration: exotelDetails.duration
+          });
+
+          // Map Exotel status to our status
+          const statusMap: Record<string, string> = {
+            'queued': 'initiated',
+            'ringing': 'ringing',
+            'in-progress': 'in-progress',
+            'completed': 'completed',
+            'busy': 'busy',
+            'failed': 'failed',
+            'no-answer': 'no-answer',
+            'canceled': 'canceled'
+          };
+
+          const mappedStatus = statusMap[exotelDetails.status.toLowerCase()] || exotelDetails.status;
+          
+          // Update call log with actual status and duration from Exotel
+          callLog.status = mappedStatus;
+          callLog.durationSec = exotelDetails.duration || 0;
+          
+          // Update outboundStatus for outbound calls
+          if (callLog.direction === 'outbound') {
+            const outboundStatusMap: Record<string, string> = {
+              'queued': 'queued',
+              'ringing': 'ringing',
+              'in-progress': 'connected',
+              'completed': 'connected',
+              'busy': 'busy',
+              'failed': 'no_answer',
+              'no-answer': 'no_answer',
+              'canceled': 'no_answer'
+            };
+            callLog.outboundStatus = outboundStatusMap[exotelDetails.status.toLowerCase()] || 'no_answer';
+          }
+
+          // Set endedAt if call is completed/ended
+          if (['completed', 'failed', 'no-answer', 'busy', 'canceled'].includes(mappedStatus) && !callLog.endedAt) {
+            callLog.endedAt = new Date();
+          }
+
+          // Update recording URL if available
+          if (exotelDetails.recordingUrl) {
+            callLog.recordingUrl = exotelDetails.recordingUrl;
+          }
+
+          fetchedFromExotel = true;
+
+          logger.info('✅ Updated call log with Exotel data', {
+            callLogId: callLog._id.toString(),
+            status: mappedStatus,
+            duration: callLog.durationSec
           });
         } catch (error: any) {
-          logger.error('Failed to query Exotel for call status', {
+          logger.warn('⚠️ Failed to query Exotel for call status, using timeout-based resolution', {
             callLogId: callLog._id.toString(),
             exotelCallSid: callLog.exotelCallSid,
             error: error.message
           });
+          // Continue with fallback below
         }
       }
 
-      // Mark as no-answer if stuck for more than threshold
-      // This is a fallback when webhook is not received
-      callLog.status = 'no-answer';
-      callLog.outboundStatus = callLog.direction === 'outbound' ? 'no_answer' : undefined;
-      callLog.endedAt = new Date();
-      callLog.durationSec = 0;
+      // Fallback: Mark as no-answer if stuck for more than threshold
+      // This is used when webhook is not received AND Exotel API fetch failed
+      if (!fetchedFromExotel) {
+        callLog.status = 'no-answer';
+        callLog.outboundStatus = callLog.direction === 'outbound' ? 'no_answer' : undefined;
+        callLog.endedAt = new Date();
+        callLog.durationSec = 0;
+      }
 
       // Update metadata
       callLog.metadata = {
@@ -123,7 +181,8 @@ class StuckCallMonitorService {
         stuckCallResolved: true,
         stuckCallResolvedAt: new Date().toISOString(),
         stuckCallAgeMinutes: ageMinutes,
-        resolvedBy: 'stuckCallMonitor'
+        resolvedBy: fetchedFromExotel ? 'stuckCallMonitor-exotel' : 'stuckCallMonitor-timeout',
+        fetchedFromExotel: fetchedFromExotel
       };
 
       await callLog.save();
@@ -131,7 +190,9 @@ class StuckCallMonitorService {
       logger.info('✅ Stuck call resolved', {
         callLogId: callLog._id.toString(),
         previousStatus: 'ringing',
-        newStatus: 'no-answer',
+        newStatus: callLog.status,
+        duration: callLog.durationSec,
+        fetchedFromExotel,
         ageMinutes
       });
 

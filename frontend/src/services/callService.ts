@@ -7,7 +7,9 @@ export const callService = {
     status?: string;
     startDate?: string;
     endDate?: string;
-  }): Promise<CallLog[]> {
+    page?: number;
+    limit?: number;
+  }): Promise<{ calls: CallLog[]; total: number; page: number; totalPages: number }> {
     // Remove empty string values from filters
     const cleanFilters = filters
       ? Object.fromEntries(
@@ -16,8 +18,13 @@ export const callService = {
       : {};
     
     const response = await api.get('/exotel/calls', { params: cleanFilters });
-    const { calls } = response.data?.data ?? {};
-    return (calls ?? []) as CallLog[];
+    const data = response.data?.data ?? {};
+    return {
+      calls: (data.calls ?? []) as CallLog[],
+      total: data.total ?? 0,
+      page: data.page ?? 1,
+      totalPages: data.totalPages ?? 1
+    };
   },
 
   async getCall(id: string): Promise<CallLog> {

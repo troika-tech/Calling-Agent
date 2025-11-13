@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { FiArrowLeft, FiPlay, FiPause, FiRefreshCw, FiX, FiPhone, FiUsers } from 'react-icons/fi';
+import { FiArrowLeft, FiPlay, FiPause, FiRefreshCw, FiX, FiPhone, FiUsers, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { useCampaignStore } from '../../store/campaignStore';
 import { campaignApi } from '../../services/campaignApi';
 import type { CallLog } from '../../types';
@@ -27,12 +27,22 @@ export default function CampaignDetail() {
   const [callLogsLoading, setCallLogsLoading] = useState(false);
   const [callLogsPage, setCallLogsPage] = useState(1);
   const [callLogsTotal, setCallLogsTotal] = useState(0);
+  const [callLogsTotalPages, setCallLogsTotalPages] = useState(1);
+  const CALL_LOGS_PER_PAGE = 20;
 
   useEffect(() => {
     if (id) {
+      setCallLogsPage(1); // Reset to first page when campaign changes
       loadCampaignData();
     }
   }, [id]);
+
+  useEffect(() => {
+    if (id) {
+      loadCallLogs();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callLogsPage, id]);
 
   useEffect(() => {
     if (!autoRefresh || !id) return;
@@ -57,15 +67,22 @@ export default function CampaignDetail() {
     if (!id) return;
     try {
       setCallLogsLoading(true);
-      const response = await campaignApi.getCallLogs(id, { page: callLogsPage, limit: 50 });
+      const response = await campaignApi.getCallLogs(id, { page: callLogsPage, limit: CALL_LOGS_PER_PAGE });
       if (response.success && response.data) {
         setCallLogs(response.data.callLogs || []);
         setCallLogsTotal(response.data.total || 0);
+        setCallLogsTotalPages(response.data.pages || 1);
       }
     } catch (error) {
       console.error('Error loading call logs:', error);
     } finally {
       setCallLogsLoading(false);
+    }
+  };
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= callLogsTotalPages) {
+      setCallLogsPage(newPage);
     }
   };
 
@@ -564,6 +581,75 @@ export default function CampaignDetail() {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {callLogsTotalPages > 1 && (
+          <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-4">
+            <div className="flex items-center text-sm text-gray-700">
+              <span>
+                Showing {((callLogsPage - 1) * CALL_LOGS_PER_PAGE) + 1} to{' '}
+                {Math.min(callLogsPage * CALL_LOGS_PER_PAGE, callLogsTotal)} of {callLogsTotal} calls
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handlePageChange(callLogsPage - 1)}
+                disabled={callLogsPage === 1 || callLogsLoading}
+                className={`px-3 py-2 text-sm font-medium rounded-md ${
+                  callLogsPage === 1 || callLogsLoading
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                <FiChevronLeft className="inline" size={16} />
+                Previous
+              </button>
+
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, callLogsTotalPages) }, (_, i) => {
+                  let pageNum: number;
+                  if (callLogsTotalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (callLogsPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (callLogsPage >= callLogsTotalPages - 2) {
+                    pageNum = callLogsTotalPages - 4 + i;
+                  } else {
+                    pageNum = callLogsPage - 2 + i;
+                  }
+
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => handlePageChange(pageNum)}
+                      disabled={callLogsLoading}
+                      className={`px-3 py-2 text-sm font-medium rounded-md ${
+                        callLogsPage === pageNum
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                      } ${callLogsLoading ? 'cursor-not-allowed opacity-50' : ''}`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={() => handlePageChange(callLogsPage + 1)}
+                disabled={callLogsPage === callLogsTotalPages || callLogsLoading}
+                className={`px-3 py-2 text-sm font-medium rounded-md ${
+                  callLogsPage === callLogsTotalPages || callLogsLoading
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Next
+                <FiChevronRight className="inline" size={16} />
+              </button>
+            </div>
           </div>
         )}
       </div>

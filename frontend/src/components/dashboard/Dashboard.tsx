@@ -29,7 +29,7 @@ export default function Dashboard() {
       setLoading(true);
       const [agentsData, callsData, statsData] = await Promise.all([
         agentService.getAgents(),
-        callService.getCalls(),
+        callService.getCalls().then(result => result.calls),
         callService.getCallStats(),
       ]);
 

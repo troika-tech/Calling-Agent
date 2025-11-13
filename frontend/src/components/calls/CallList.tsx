@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FiPhone, FiFilter, FiDownload } from 'react-icons/fi';
+import { FiPhone, FiFilter, FiDownload, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { callService } from '../../services/callService';
 import type { CallLog } from '../../types';
 import { formatDuration, formatDate, formatPhoneNumber, calculateDuration } from '../../utils/format';
@@ -8,24 +8,45 @@ import { formatDuration, formatDate, formatPhoneNumber, calculateDuration } from
 export default function CallList() {
   const [calls, setCalls] = useState<CallLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const CALLS_PER_PAGE = 20;
   const [filters, setFilters] = useState({
     status: '',
     agentId: '',
   });
 
   useEffect(() => {
-    loadCalls();
+    setPage(1); // Reset to first page when filters change
   }, [filters]);
+
+  useEffect(() => {
+    loadCalls();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, page]);
 
   const loadCalls = async () => {
     try {
       setLoading(true);
-      const data = await callService.getCalls(filters);
-      setCalls(data);
+      const result = await callService.getCalls({
+        ...filters,
+        page,
+        limit: CALLS_PER_PAGE
+      });
+      setCalls(result.calls);
+      setTotal(result.total);
+      setTotalPages(result.totalPages);
     } catch (error: any) {
       console.error('Error loading calls:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setPage(newPage);
     }
   };
 
@@ -192,6 +213,75 @@ export default function CallList() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="mt-6 flex items-center justify-between border-t border-neutral-200 pt-4 px-6 pb-4">
+            <div className="flex items-center text-sm text-neutral-700">
+              <span>
+                Showing {((page - 1) * CALLS_PER_PAGE) + 1} to{' '}
+                {Math.min(page * CALLS_PER_PAGE, total)} of {total} calls
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handlePageChange(page - 1)}
+                disabled={page === 1 || loading}
+                className={`px-3 py-2 text-sm font-medium rounded-md ${
+                  page === 1 || loading
+                    ? 'bg-neutral-100 text-neutral-400 cursor-not-allowed'
+                    : 'bg-white text-neutral-700 border border-neutral-300 hover:bg-neutral-50'
+                }`}
+              >
+                <FiChevronLeft className="inline" size={16} />
+                Previous
+              </button>
+
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum: number;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (page <= 3) {
+                    pageNum = i + 1;
+                  } else if (page >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = page - 2 + i;
+                  }
+
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => handlePageChange(pageNum)}
+                      disabled={loading}
+                      className={`px-3 py-2 text-sm font-medium rounded-md ${
+                        page === pageNum
+                          ? 'bg-primary-600 text-white'
+                          : 'bg-white text-neutral-700 border border-neutral-300 hover:bg-neutral-50'
+                      } ${loading ? 'cursor-not-allowed opacity-50' : ''}`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={() => handlePageChange(page + 1)}
+                disabled={page === totalPages || loading}
+                className={`px-3 py-2 text-sm font-medium rounded-md ${
+                  page === totalPages || loading
+                    ? 'bg-neutral-100 text-neutral-400 cursor-not-allowed'
+                    : 'bg-white text-neutral-700 border border-neutral-300 hover:bg-neutral-50'
+                }`}
+              >
+                Next
+                <FiChevronRight className="inline" size={16} />
+              </button>
+            </div>
           </div>
         )}
       </div>

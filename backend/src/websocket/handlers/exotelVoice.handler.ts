@@ -85,6 +85,7 @@ interface VoiceSession {
   transcriptProcessTimeout?: NodeJS.Timeout;  // Timeout for processing transcript (workaround for UtteranceEnd not firing)
   sarvamTranscriptTimeout?: NodeJS.Timeout;  // Timeout for processing Sarvam transcripts when END_SPEECH doesn't fire
   audioChunkCounter?: number;  // Counter for audio chunks sent to STT (for debugging)
+  lastAgentResponseTime?: number;  // Timestamp when agent last finished speaking (to prevent immediate re-processing)
   // Performance timing
   timings?: {
     speechStart?: number;
@@ -295,6 +296,25 @@ class ExotelVoiceHandler {
                       return;
                     }
 
+                    // CRITICAL: Prevent processing if agent just finished speaking (cooldown period)
+                    // This prevents the agent from processing its own voice or immediately re-processing
+                    const COOLDOWN_PERIOD_MS = 2000; // 2 seconds cooldown after agent speaks
+                    const timeSinceLastResponse = session.lastAgentResponseTime 
+                      ? Date.now() - session.lastAgentResponseTime 
+                      : Infinity;
+                    
+                    if (timeSinceLastResponse < COOLDOWN_PERIOD_MS) {
+                      logger.debug('Skipping Sarvam timeout - agent just finished speaking (cooldown active)', {
+                        clientId: client.id,
+                        timeSinceLastResponse: `${timeSinceLastResponse}ms`,
+                        cooldownRemaining: `${COOLDOWN_PERIOD_MS - timeSinceLastResponse}ms`
+                      });
+                      // Clear the transcript to prevent it from being processed later
+                      session.userTranscript = '';
+                      session.partialTranscript = '';
+                      return;
+                    }
+
                     // Only process if we have a transcript and agent is not speaking
                     if (session.userTranscript && session.userTranscript.trim().length > 0) {
                       logger.info('⏰ Sarvam transcript timeout - processing transcript (END_SPEECH not received)', {
@@ -343,6 +363,24 @@ class ExotelVoiceHandler {
                 if (currentSession.sarvamTranscriptTimeout) {
                   clearTimeout(currentSession.sarvamTranscriptTimeout);
                   currentSession.sarvamTranscriptTimeout = undefined;
+                }
+
+                // CRITICAL: Prevent processing if agent just finished speaking (cooldown period)
+                const COOLDOWN_PERIOD_MS = 2000; // 2 seconds cooldown after agent speaks
+                const timeSinceLastResponse = currentSession.lastAgentResponseTime 
+                  ? Date.now() - currentSession.lastAgentResponseTime 
+                  : Infinity;
+                
+                if (timeSinceLastResponse < COOLDOWN_PERIOD_MS) {
+                  logger.debug('Skipping END_SPEECH - agent just finished speaking (cooldown active)', {
+                    clientId: client.id,
+                    timeSinceLastResponse: `${timeSinceLastResponse}ms`,
+                    cooldownRemaining: `${COOLDOWN_PERIOD_MS - timeSinceLastResponse}ms`
+                  });
+                  // Clear the transcript to prevent it from being processed later
+                  currentSession.userTranscript = '';
+                  currentSession.partialTranscript = '';
+                  return;
                 }
 
                 currentSession.timings!.speechEnd = Date.now();
@@ -1138,9 +1176,8 @@ class ExotelVoiceHandler {
         return;
       }
 
-      // Clear transcript for next turn
-      session.userTranscript = '';
-      session.partialTranscript = '';
+      // DON'T clear transcript yet - we'll clear it after agent finishes speaking
+      // This prevents the agent from processing its own voice
 
 
 
@@ -1829,7 +1866,17 @@ class ExotelVoiceHandler {
         error: error.message
       });
     } finally {
+      // CRITICAL: Clear transcript and set cooldown AFTER agent finishes speaking
+      // This prevents the agent from processing its own voice or immediately re-processing
+      session.userTranscript = '';
+      session.partialTranscript = '';
+      session.lastAgentResponseTime = Date.now(); // Set cooldown timestamp
       session.isProcessing = false;
+      
+      logger.debug('✅ Agent response complete - transcript cleared, cooldown set', {
+        clientId: client.id,
+        cooldownTime: session.lastAgentResponseTime
+      });
     }
   }
 

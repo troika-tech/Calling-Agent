@@ -8,6 +8,7 @@ import { waitlistCompactor } from '../services/waitlistCompactor.service';
 import { bullmqReconciler } from '../services/bullmqReconciler.service';
 import { reconciliationService } from '../services/reconciliation.service';
 import { invariantMonitor } from '../services/invariantMonitor.service';
+import { stuckCallMonitorService } from '../services/stuckCallMonitor.service';
 
 /**
  * Graceful Shutdown Handler
@@ -28,7 +29,8 @@ export async function gracefulShutdown(signal: string = 'SIGTERM') {
       waitlistCompactor.stop(),
       bullmqReconciler.stop(),
       reconciliationService.stop(),
-      invariantMonitor.stop()
+      invariantMonitor.stop(),
+      stuckCallMonitorService.stop()
     ]);
     logger.info('All background services stopped');
 

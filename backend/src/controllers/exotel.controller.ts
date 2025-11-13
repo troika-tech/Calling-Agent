@@ -91,30 +91,94 @@ export class ExotelController {
     try {
       const webhookData = exotelService.parseWebhook(req.body);
 
-      logger.info('Received Exotel webhook', {
+      logger.info('📞 Received Exotel webhook', {
         callSid: webhookData.CallSid,
         status: webhookData.Status,
         direction: webhookData.Direction,
-        customField: webhookData.CustomField
+        customField: webhookData.CustomField,
+        from: webhookData.CallFrom,
+        to: webhookData.CallTo
       });
 
-      // Find call log by Exotel SID or CustomField (for outbound calls)
-      let callLog = await CallLog.findOne({ exotelCallSid: webhookData.CallSid });
+      // Multiple lookup strategies to find the call log
+      let callLog = null;
+      let lookupMethod = 'none';
 
-      // If not found by SID, try finding by CustomField (contains callLogId for outbound calls)
+      // Strategy 1: Find by exotelCallSid (most reliable)
+      if (webhookData.CallSid) {
+        callLog = await CallLog.findOne({ exotelCallSid: webhookData.CallSid });
+        if (callLog) {
+          lookupMethod = 'exotelCallSid';
+          logger.info('✅ Found call log by exotelCallSid', {
+            callLogId: callLog._id.toString(),
+            callSid: webhookData.CallSid
+          });
+        }
+      }
+
+      // Strategy 2: Find by CustomField (contains callLogId for outbound calls)
       if (!callLog && webhookData.CustomField) {
-        callLog = await CallLog.findById(webhookData.CustomField);
+        try {
+          callLog = await CallLog.findById(webhookData.CustomField);
+          if (callLog) {
+            lookupMethod = 'customField';
+            logger.info('✅ Found call log by CustomField', {
+              callLogId: callLog._id.toString(),
+              customField: webhookData.CustomField
+            });
+          }
+        } catch (error) {
+          logger.debug('CustomField is not a valid ObjectId', {
+            customField: webhookData.CustomField
+          });
+        }
+      }
+
+      // Strategy 3: Find by phone numbers + recent timestamp (fallback for edge cases)
+      if (!callLog && webhookData.CallFrom && webhookData.CallTo) {
+        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+        callLog = await CallLog.findOne({
+          $or: [
+            { fromPhone: webhookData.CallFrom, toPhone: webhookData.CallTo },
+            { fromPhone: webhookData.CallTo, toPhone: webhookData.CallFrom }
+          ],
+          createdAt: { $gte: fiveMinutesAgo },
+          direction: webhookData.Direction === 'outbound-api' ? 'outbound' : 'inbound'
+        }).sort({ createdAt: -1 });
+
+        if (callLog) {
+          lookupMethod = 'phoneNumbers';
+          logger.info('✅ Found call log by phone numbers + timestamp', {
+            callLogId: callLog._id.toString(),
+            from: webhookData.CallFrom,
+            to: webhookData.CallTo
+          });
+        }
       }
 
       if (!callLog) {
-        logger.warn('Call log not found for webhook', {
+        logger.warn('⚠️ Call log not found for webhook - tried all lookup strategies', {
           callSid: webhookData.CallSid,
-          customField: webhookData.CustomField
+          customField: webhookData.CustomField,
+          from: webhookData.CallFrom,
+          to: webhookData.CallTo,
+          direction: webhookData.Direction,
+          status: webhookData.Status
         });
 
         // Still send 200 OK to Exotel
         res.status(200).json({ success: true });
         return;
+      }
+
+      // Ensure exotelCallSid is always set (in case it wasn't set during call creation)
+      if (!callLog.exotelCallSid && webhookData.CallSid) {
+        callLog.exotelCallSid = webhookData.CallSid;
+        logger.info('🔧 Set exotelCallSid on call log', {
+          callLogId: callLog._id.toString(),
+          callSid: webhookData.CallSid,
+          lookupMethod
+        });
       }
 
       // Map Exotel status to our status
@@ -130,6 +194,23 @@ export class ExotelController {
       };
 
       const newStatus = statusMap[webhookData.Status.toLowerCase()] || webhookData.Status;
+      const previousStatus = callLog.status;
+
+      // Log status change
+      if (previousStatus !== newStatus) {
+        logger.info('🔄 Call status changing', {
+          callLogId: callLog._id.toString(),
+          previousStatus,
+          newStatus,
+          exotelStatus: webhookData.Status,
+          lookupMethod
+        });
+      } else {
+        logger.debug('Call status unchanged', {
+          callLogId: callLog._id.toString(),
+          status: newStatus
+        });
+      }
 
       // Update call log
       callLog.status = newStatus;
@@ -176,10 +257,35 @@ export class ExotelController {
         ...callLog.metadata,
         dialWhomNumber: webhookData.DialWhomNumber,
         callType: webhookData.CallType,
-        digits: webhookData.Digits
+        digits: webhookData.Digits,
+        lastWebhookStatus: webhookData.Status,
+        lastWebhookReceivedAt: new Date().toISOString()
       };
 
-      await callLog.save();
+      // Save call log with error handling
+      try {
+        await callLog.save();
+        logger.info('✅ Call log status updated successfully', {
+          callLogId: callLog._id.toString(),
+          status: newStatus,
+          previousStatus,
+          exotelStatus: webhookData.Status,
+          lookupMethod,
+          endedAt: callLog.endedAt,
+          durationSec: callLog.durationSec
+        });
+      } catch (saveError: any) {
+        logger.error('❌ Failed to save call log status update', {
+          callLogId: callLog._id.toString(),
+          status: newStatus,
+          error: saveError.message,
+          errorStack: saveError.stack,
+          lookupMethod
+        });
+        // Still send 200 OK to Exotel to prevent retries
+        res.status(200).json({ success: true });
+        return;
+      }
 
       // If outbound call ended, mark as ended in OutgoingCallService
       if (callLog.direction === 'outbound' && ['completed', 'failed', 'no-answer', 'busy', 'canceled'].includes(newStatus)) {

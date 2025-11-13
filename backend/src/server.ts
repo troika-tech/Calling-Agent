@@ -41,13 +41,15 @@ const startServer = async () => {
     logger.info('Redis concurrency tracker initialized');
 
     // Start background services in order
+    const { stuckCallMonitorService } = await import('./services/stuckCallMonitor.service');
     await Promise.all([
       leaseJanitor.start(),
       waitlistCompactor.start(),
       bullmqReconciler.start(),
       reconciliationService.start(),
       invariantMonitor.start(),
-      waitlistService.start()
+      waitlistService.start(),
+      stuckCallMonitorService.start()
     ]);
     logger.info('All background services started');
 

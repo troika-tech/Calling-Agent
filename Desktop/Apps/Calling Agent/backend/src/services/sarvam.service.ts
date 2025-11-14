@@ -212,35 +212,37 @@ export class SarvamService {
             fullMessage: JSON.stringify(message)
           });
 
-          // Handle different message types based on Sarvam API documentation
-          // Correct message types: 'transcript', 'speech_start', 'speech_end', 'error'
-          if (message.type === 'speech_start') {
-            // VAD event: Speech started
-            logger.info('🎤 SPEECH STARTED (Sarvam VAD)');
-            options.onSpeechStarted?.();
-          } else if (message.type === 'speech_end') {
-            // VAD event: Speech ended
-            logger.info('🔇 SPEECH ENDED (Sarvam VAD)');
-            options.onSpeechEnded?.();
-          } else if (message.type === 'transcript') {
+          // Handle different message types based on actual Sarvam API responses
+          // Actual message types: 'events' (VAD signals), 'data' (transcripts), 'error'
+          if (message.type === 'events') {
+            // VAD event: Speech started or ended
+            const signalType = message.data?.signal_type;
+            if (signalType === 'START_SPEECH') {
+              logger.info('🎤 SPEECH STARTED (Sarvam VAD)');
+              options.onSpeechStarted?.();
+            } else if (signalType === 'END_SPEECH') {
+              logger.info('🔇 SPEECH ENDED (Sarvam VAD)');
+              options.onSpeechEnded?.();
+            }
+          } else if (message.type === 'data') {
             // Transcription data
-            const transcript = message.transcript || '';
+            const transcript = message.data?.transcript || '';
             const isFinal = true;  // Sarvam sends final transcripts
             const confidence = 1.0;  // Sarvam doesn't provide confidence scores
 
             if (transcript && transcript.trim().length > 0) {
               logger.info('📝 Sarvam transcript received', {
                 text: transcript,
-                language: message.language_code,
-                audioDuration: message.audio_duration,
-                processingLatency: message.processing_latency
+                language: message.data?.language_code,
+                audioDuration: message.data?.metrics?.audio_duration,
+                processingLatency: message.data?.metrics?.processing_latency
               });
 
               options.onTranscript?.({
                 text: transcript,
                 confidence,
                 isFinal,
-                language: message.language_code || sarvamLanguage
+                language: message.data?.language_code || sarvamLanguage
               });
             }
           } else if (message.type === 'error') {

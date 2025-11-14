@@ -250,6 +250,81 @@ export class ExotelService {
   }
 
   /**
+   * Get call recordings with custom Exotel credentials (per-phone)
+   */
+  async getRecordingWithCredentials(
+    callSid: string,
+    credentials: {
+      apiKey: string;
+      apiToken: string;
+      sid: string;
+      subdomain: string;
+    }
+  ): Promise<string | null> {
+    try {
+      logger.info('Fetching call recording with custom credentials', {
+        callSid,
+        sid: credentials.sid
+      });
+
+      // Determine API version (check if v2 is used)
+      const baseUrlMatch = process.env.EXOTEL_BASE_URL?.match(/\/(v\d+)\//);
+      const apiVersion = baseUrlMatch ? baseUrlMatch[1] : 'v1';
+
+      const baseUrl = `https://${credentials.subdomain}/${apiVersion}/Accounts/${credentials.sid}`;
+
+      const customClient = axios.create({
+        baseURL: baseUrl,
+        auth: {
+          username: credentials.apiKey,
+          password: credentials.apiToken
+        },
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      });
+
+      const response = await customClient.get(
+        `/Calls/${callSid}/Recordings.json`
+      );
+
+      const recordings = response.data.Recordings;
+      if (!recordings || recordings.length === 0) {
+        logger.info('No recordings found for call', { callSid });
+        return null;
+      }
+
+      // Return the URL of the first recording
+      const recordingUrl = recordings[0].RecordingUrl;
+      logger.info('Recording fetched successfully', {
+        callSid,
+        recordingUrl
+      });
+
+      return recordingUrl;
+    } catch (error: any) {
+      // Handle 404 as "recording not ready yet" - not an error
+      if (error.response?.status === 404) {
+        logger.info('Recording not yet available for call', {
+          callSid,
+          message: 'Recording may still be processing'
+        });
+        return null;
+      }
+
+      logger.error('Failed to fetch recording with credentials', {
+        callSid,
+        error: error.message,
+        status: error.response?.status,
+        response: error.response?.data
+      });
+
+      return null;
+    }
+  }
+
+  /**
    * End an active call
    */
   async hangupCall(callSid: string): Promise<void> {

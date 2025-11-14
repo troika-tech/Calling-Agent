@@ -73,6 +73,15 @@ export const callService = {
     return response.data?.data;
   },
 
+  async fetchRecording(callId: string): Promise<{ success: boolean; recordingUrl: string | null; message: string }> {
+    const response = await api.get(`/exotel/calls/${callId}/recording`);
+    return {
+      success: response.data.success,
+      recordingUrl: response.data.data?.recordingUrl || null,
+      message: response.data.data?.message || ''
+    };
+  },
+
   async initiateOutboundCall(data: {
     phoneNumber: string;
     phoneId: string;

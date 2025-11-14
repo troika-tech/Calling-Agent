@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FiArrowLeft, FiDownload, FiPhone, FiClock, FiUser, FiRefreshCw, FiCheckCircle, FiAlertCircle, FiSmile, FiMeh, FiFrown } from 'react-icons/fi';
+import { FiArrowLeft, FiDownload, FiPhone, FiClock, FiUser, FiRefreshCw, FiCheckCircle, FiAlertCircle, FiSmile, FiMeh, FiFrown, FiPlay, FiPause, FiHeadphones, FiLoader } from 'react-icons/fi';
 import { callService } from '../../services/callService';
 import type { CallLog } from '../../types';
 import { formatDuration, formatDate, formatPhoneNumber, calculateDuration } from '../../utils/format';
@@ -11,6 +11,9 @@ export default function CallDetail() {
   const [call, setCall] = useState<CallLog | null>(null);
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
+  const [fetchingRecording, setFetchingRecording] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -46,6 +49,51 @@ export default function CallDetail() {
     } finally {
       setRegenerating(false);
     }
+  };
+
+  const handleFetchRecording = async () => {
+    if (!id) return;
+
+    try {
+      setFetchingRecording(true);
+      const result = await callService.fetchRecording(id);
+      
+      if (result.success && result.recordingUrl) {
+        // Reload call to get updated recordingUrl
+        await loadCall(id);
+        alert('Recording fetched successfully!');
+      } else {
+        alert(result.message || 'Recording not yet available. It may still be processing. Please try again later.');
+      }
+    } catch (error: any) {
+      console.error('Error fetching recording:', error);
+      alert(error.response?.data?.message || 'Failed to fetch recording');
+    } finally {
+      setFetchingRecording(false);
+    }
+  };
+
+  const handlePlayPause = () => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+      } else {
+        audioRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  const handleAudioEnded = () => {
+    setIsPlaying(false);
+  };
+
+  const handleAudioPlay = () => {
+    setIsPlaying(true);
+  };
+
+  const handleAudioPause = () => {
+    setIsPlaying(false);
   };
 
   const getSentimentIcon = (sentiment?: 'positive' | 'neutral' | 'negative') => {
@@ -100,18 +148,84 @@ export default function CallDetail() {
             </p>
           </div>
         </div>
-        {call.recordingUrl && (
-          <a
-            href={call.recordingUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-secondary flex items-center"
-          >
-            <FiDownload className="mr-2" />
-            Download Recording
-          </a>
-        )}
+        <div className="flex items-center gap-3">
+          {call.recordingUrl ? (
+            <>
+              <a
+                href={call.recordingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-secondary flex items-center"
+              >
+                <FiDownload className="mr-2" />
+                Download
+              </a>
+            </>
+          ) : (
+            ['completed', 'no-answer', 'user-ended', 'agent-ended'].includes(call.status) && (
+              <button
+                onClick={handleFetchRecording}
+                disabled={fetchingRecording}
+                className="btn-secondary flex items-center"
+              >
+                {fetchingRecording ? (
+                  <>
+                    <FiLoader className="mr-2 animate-spin" />
+                    Fetching...
+                  </>
+                ) : (
+                  <>
+                    <FiRefreshCw className="mr-2" />
+                    Fetch Recording
+                  </>
+                )}
+              </button>
+            )
+          )}
+        </div>
       </div>
+
+      {/* Recording Player Section */}
+      {call.recordingUrl && (
+        <div className="card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center">
+              <FiHeadphones className="mr-2 text-primary-600" />
+              Call Recording
+            </h2>
+            <a
+              href={call.recordingUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-primary-600 hover:text-primary-700 flex items-center"
+            >
+              <FiDownload className="mr-1" size={14} />
+              Download
+            </a>
+          </div>
+          <div className="flex items-center gap-4 bg-gray-50 rounded-lg p-4">
+            <button
+              onClick={handlePlayPause}
+              className="flex items-center justify-center w-12 h-12 rounded-full bg-primary-600 text-white hover:bg-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+              aria-label={isPlaying ? 'Pause' : 'Play'}
+            >
+              {isPlaying ? <FiPause size={20} /> : <FiPlay size={20} className="ml-1" />}
+            </button>
+            <audio
+              ref={audioRef}
+              src={call.recordingUrl}
+              onEnded={handleAudioEnded}
+              onPlay={handleAudioPlay}
+              onPause={handleAudioPause}
+              className="flex-1"
+              controls
+              style={{ width: '100%', maxWidth: '600px' }}
+            >
+              Your browser does not support the audio element.
+            </audio>
+          </div>
+        </div>
+      )}
 
       {/* Call Info */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FiPhone, FiFilter, FiDownload, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+import { FiPhone, FiFilter, FiDownload, FiChevronLeft, FiChevronRight, FiHeadphones } from 'react-icons/fi';
 import { callService } from '../../services/callService';
 import type { CallLog } from '../../types';
 import { formatDuration, formatDate, formatPhoneNumber, calculateDuration } from '../../utils/format';
@@ -141,6 +141,9 @@ export default function CallList() {
                     Duration
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-neutral-600 uppercase tracking-wider">
+                    Recording
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-neutral-600 uppercase tracking-wider">
                     Date
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-neutral-600 uppercase tracking-wider">
@@ -211,6 +214,16 @@ export default function CallList() {
                         const calculated = calculateDuration(startTime, endTime);
                         return calculated && calculated > 0 ? formatDuration(calculated) : 'N/A';
                       })()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {call.recordingUrl ? (
+                        <div className="flex items-center gap-1">
+                          <FiHeadphones className="text-primary-600" size={16} title="Recording available" />
+                          <span className="text-xs text-neutral-600">Available</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-neutral-400">-</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-500">
                       {formatDate(call.createdAt)}

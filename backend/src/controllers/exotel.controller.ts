@@ -526,6 +526,99 @@ export class ExotelController {
   }
 
   /**
+   * Helper method to fetch and store recording for a call
+   */
+  private async fetchAndStoreRecording(callLog: any, userId: string): Promise<string | null> {
+    if (!callLog.exotelCallSid) {
+      logger.debug('Cannot fetch recording: no exotelCallSid', {
+        callLogId: callLog._id.toString()
+      });
+      return null;
+    }
+
+    // Check if recording already exists
+    if (callLog.recordingUrl) {
+      logger.debug('Recording already exists for call', {
+        callLogId: callLog._id.toString(),
+        recordingUrl: callLog.recordingUrl
+      });
+      return callLog.recordingUrl;
+    }
+
+    try {
+      let recordingUrl: string | null = null;
+
+      // Try to get credentials from phone if phoneId exists
+      if (callLog.phoneId) {
+        try {
+          const exotelCredentials = await phoneService.getExotelCredentials(
+            callLog.phoneId._id || callLog.phoneId,
+            userId
+          );
+
+          if (exotelCredentials) {
+            logger.info('Fetching recording with phone-specific credentials', {
+              callLogId: callLog._id.toString(),
+              exotelCallSid: callLog.exotelCallSid
+            });
+
+            recordingUrl = await exotelService.getRecordingWithCredentials(
+              callLog.exotelCallSid,
+              {
+                apiKey: exotelCredentials.apiKey,
+                apiToken: exotelCredentials.apiToken,
+                sid: exotelCredentials.sid,
+                subdomain: exotelCredentials.subdomain
+              }
+            );
+          }
+        } catch (error: any) {
+          logger.warn('Failed to get phone credentials, trying global credentials', {
+            callLogId: callLog._id.toString(),
+            error: error.message
+          });
+        }
+      }
+
+      // Fallback to global credentials if phone-specific failed or no phoneId
+      if (!recordingUrl) {
+        logger.info('Fetching recording with global credentials', {
+          callLogId: callLog._id.toString(),
+          exotelCallSid: callLog.exotelCallSid
+        });
+
+        recordingUrl = await exotelService.getRecording(callLog.exotelCallSid);
+      }
+
+      // If recording found, store it in database
+      if (recordingUrl) {
+        callLog.recordingUrl = recordingUrl;
+        await callLog.save();
+
+        logger.info('✅ Recording fetched and stored', {
+          callLogId: callLog._id.toString(),
+          exotelCallSid: callLog.exotelCallSid,
+          recordingUrl
+        });
+      } else {
+        logger.info('Recording not yet available (may still be processing)', {
+          callLogId: callLog._id.toString(),
+          exotelCallSid: callLog.exotelCallSid
+        });
+      }
+
+      return recordingUrl;
+    } catch (error: any) {
+      logger.error('Failed to fetch recording', {
+        callLogId: callLog._id.toString(),
+        exotelCallSid: callLog.exotelCallSid,
+        error: error.message
+      });
+      return null;
+    }
+  }
+
+  /**
    * Get call details
    */
   async getCall(req: Request, res: Response, next: NextFunction) {
@@ -572,6 +665,17 @@ export class ExotelController {
               callObj.durationSec = exotelDetails.duration;
             }
           }
+
+          // Auto-fetch recording if missing and call is completed
+          if (!callLog.recordingUrl && ['completed', 'no-answer', 'user-ended', 'agent-ended'].includes(callLog.status)) {
+            // Fetch recording in background (don't block response)
+            this.fetchAndStoreRecording(callLog, userId).catch((error) => {
+              logger.error('Background recording fetch failed', {
+                callLogId: callLog._id.toString(),
+                error: error.message
+              });
+            });
+          }
         } catch (error: any) {
           logger.debug('Failed to fetch duration from Exotel API, using existing or fallback', {
             callLogId: callLog._id.toString(),
@@ -611,10 +715,74 @@ export class ExotelController {
         }
       }
 
+      // Update callObj with latest recordingUrl (in case it was just fetched)
+      if (callLog.recordingUrl) {
+        callObj.recordingUrl = callLog.recordingUrl;
+      }
+
       res.status(200).json({
         success: true,
         data: { call: callObj }
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Manually fetch recording for a call
+   */
+  async fetchRecording(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user._id.toString();
+      const { callId } = req.params;
+
+      const callLog = await CallLog.findOne({ _id: callId, userId })
+        .populate('phoneId', 'number country');
+
+      if (!callLog) {
+        throw new NotFoundError('Call not found');
+      }
+
+      if (!callLog.exotelCallSid) {
+        throw new ValidationError('No Exotel call ID associated with this call');
+      }
+
+      // Check if already has recording
+      if (callLog.recordingUrl) {
+        return res.status(200).json({
+          success: true,
+          data: {
+            recordingUrl: callLog.recordingUrl,
+            message: 'Recording already exists'
+          }
+        });
+      }
+
+      // Fetch recording
+      const recordingUrl = await this.fetchAndStoreRecording(callLog, userId);
+
+      if (recordingUrl) {
+        // Reload to get updated recordingUrl
+        await callLog.populate('phoneId', 'number country');
+        const updatedCallLog = await CallLog.findById(callId);
+
+        res.status(200).json({
+          success: true,
+          data: {
+            recordingUrl: recordingUrl,
+            message: 'Recording fetched successfully'
+          }
+        });
+      } else {
+        res.status(200).json({
+          success: false,
+          data: {
+            recordingUrl: null,
+            message: 'Recording not yet available. It may still be processing. Please try again later.'
+          }
+        });
+      }
     } catch (error) {
       next(error);
     }

@@ -84,6 +84,14 @@ router.get(
   exotelController.getCall.bind(exotelController)
 );
 
+router.get(
+  '/calls/:callId/recording',
+  authenticate,
+  requireAdmin,
+  validate(callIdSchema),
+  exotelController.fetchRecording.bind(exotelController)
+);
+
 router.post(
   '/calls/:callId/hangup',
   authenticate,
